@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "bezier-js": "6.1.0",
+    "makerjs": "^0.17.1",
+    "mathjs": "^9.4.3"
+  },
+  "devDependencies": {
+    "@swc/core": "^1.2.137",
+    "@swc/helpers": "^0.3.2",
+    "regenerator-runtime": "^0.13.9"
+  }
+}
