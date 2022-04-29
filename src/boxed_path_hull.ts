@@ -31,7 +31,25 @@ interface DrawPoints {
 interface HullSegment {
     dist: number,
     hull_curve: Bezier,
-    offsets: { [index: number]: { t: number, d: Point } },
+}
+
+
+interface Interval {
+    start: number,
+    end: number,
+    end_point: Point,
+}
+
+interface BezierOffsetIntervals {
+    dist: number,
+    seg_idx: number,
+    intervals: Interval[],
+}
+
+interface BezierOffsetInterval {
+    dist: number,
+    seg_idx: number,
+    interval: Interval,
 }
 
 interface HullBezier {
@@ -85,67 +103,110 @@ export function build_boxed_hull(
     let segments_lee: HullSegment[] = [];
     let segments_wind: HullSegment[] = [];
 
+    let offsets_lee : BezierOffsetIntervals[] = [];
+    let offsets_wind: BezierOffsetIntervals[] = [];
+
     let step = 1.0 / precision;
     for (let i = 0.0; i <= 1.0; i += step) {
+
         let { lee, dist_lee, wind, dist_wind } = hull_curve_at_t(boxed_hull, i);
-        segments_lee = add_segment_if_required(dist_lee, lee, threshold, segments_lee);
-        segments_wind = add_segment_if_required(dist_wind, wind, threshold, segments_wind);
+
+        let split_curve_lee = split_curve_by_arcs(dist_lee, lee, threshold, segments_lee.length);
+        let split_curve_wind = split_curve_by_arcs(dist_wind, wind, threshold, segments_wind.length);
+
+        segments_lee.push(split_curve_lee.new_segment);
+        segments_wind.push(split_curve_wind.new_segment);
+
+        offsets_lee.push(split_curve_lee.offsets);
+        offsets_wind.push(split_curve_wind.offsets);
     }
 
     boxed_hull.lee_segments = segments_lee;
     boxed_hull.wind_segments = segments_wind;
 
-    boxed_hull.lee_beziers = process_segments_into_hull_bezier(segments_lee);
-    boxed_hull.wind_beziers = process_segments_into_hull_bezier(segments_wind);
+    boxed_hull.lee_beziers = process_segments_into_hull_bezier(offsets_lee);
+    boxed_hull.wind_beziers = process_segments_into_hull_bezier(offsets_wind);
 
     return boxed_hull;
 }
 
-function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[] {
+function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): HullBezier[] {
 
-    let bezier_curves: HullBezier[] = [];
-    let point_sets: {
-        [idx: number]: {
-            points: { t: Point, d: Point }[],
-            start_seg_idx: number,
-            end_seg_idx: number,
-        }
-    } = {};
-    // Remap the segments to a per-line basis
-    segments.forEach((segment, idx) => {
-        for (let seg_key in segment.offsets) {
-            let point: Point = {
-                x: segment.dist,
-                y: segment.offsets[seg_key].t
-            };
-            if (point_sets[seg_key] == undefined) {
-                point_sets[seg_key] = {
-                    points: [],
-                    start_seg_idx: idx,
-                    end_seg_idx: idx,
-                };
-            };
-            point_sets[seg_key].points.push({ t: point, d: segment.offsets[seg_key].d });
-            point_sets[seg_key].end_seg_idx = idx;
-        }
+    // This is an array that we'll fill by matching segments appropiately to their parent beziers
+    let bezier_point_list: {
+        last_idx: number,
+        last_interval: Interval,
+        owned_offsets: BezierOffsetInterval[],
+    }[] = [];
+
+    let prev_offset = offsets[0];
+    
+    prev_offset.intervals.forEach(offset => {
+        bezier_point_list.push({
+            last_idx: 0,
+            last_interval: offset,
+            owned_offsets: [{
+                dist: prev_offset.dist,
+                seg_idx: prev_offset.seg_idx,
+                interval: offset,
+            }]
+        });
     });
 
-    //For a test, take the first, last, and middle
-    for (const idx in point_sets) {
-        let point_set = point_sets[idx];
-        let new_set: { t: Point, d: Point }[] = [];
+    for(let i = 1; i < offsets.length; i++){
+        let offset = offsets[i];
+        
+        // We need to match, or not match all our intervals
+        for(let interval of offset.intervals) {
 
+            for(let bezier of bezier_point_list) {
+
+                // Ignore beziers that have been ended
+                if (bezier.last_idx < i - 1) {
+                    continue;
+                }
+
+                // Now we want to find if our current segment has significant overlap with the last interval of the
+                //  bezier
+                let overlap = 0;
+                if (interval.end > bezier.last_interval.start && interval.end <= bezier.last_interval.end) {
+                    overlap = interval.end - bezier.last_interval.start;
+                } else if (interval.start >= bezier.last_interval.start && interval.start < bezier.last_interval.end) {
+                    overlap = bezier.last_interval.end - interval.start;
+                } else {
+                    // If there's no overlap then this isn't a match of any kind
+                    continue;
+                }
+
+                let size = interval.end - interval.start;
+                if (overlap / size > 0.95) {
+
+                    bezier.last_idx = i;
+                    bezier.last_interval = interval;
+                    bezier.owned_offsets.push({
+                        dist: offset.dist,
+                        seg_idx: offset.seg_idx,
+                        interval: interval,
+                    });
+                    break;
+                }
+            }
+        }
+
+        prev_offset = offset;
+    }
+
+    bezier_point_list.forEach(bezier => {
         let set_to_consider: {
             idx: number,
             delta: number,
-            val: { t: Point, d: Point },
+            val: BezierOffsetInterval,
         }[] = []
 
-        for (let i = 1; i < point_set.points.length - 1; i++) {
-            let next = point_set.points[i + 1];
-            let curr = point_set.points[i];
-
-            let t_diff = abs(curr.t.y - next.t.y);
+        let curr = bezier.owned_offsets[0];
+        for (let i = 1; i < bezier.owned_offsets.length - 1; i++) {
+            let next = bezier.owned_offsets[i];
+            let t_diff = abs(curr.interval.end - next.interval.end);
 
             set_to_consider.push(
                 {
@@ -154,6 +215,7 @@ function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[
                     val: curr,
                 }
             )
+            curr = next;
         }
 
         set_to_consider = set_to_consider.sort((a, b) => {
@@ -178,97 +240,68 @@ function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[
             }
         });
 
-        new_set = new_set.concat(set_to_consider.map(val => val.val));
-
-        new_set.unshift(point_set.points[0]);
-        new_set.push(point_set.points[point_set.points.length - 1]);
-        point_sets[idx].points = new_set;
-    }
-
-    
-    // Remap to HullBezier objects
-    for (const idx in point_sets) {
-        const point_set = point_sets[idx];
-        let new_hull_bezier: HullBezier = {
-            start_seg_idx: point_set.start_seg_idx,
-            end_seg_idx: point_set.end_seg_idx,
-            t_curve: new Bezier(point_set.points.map(val => val.t)),
-            d_curve: new Bezier(point_set.points.map(val => val.d)),
-        };
-        bezier_curves.push(new_hull_bezier);
-    };
-
-    return bezier_curves;
-}
-
-function add_segment_if_required(dist: number, curve: Bezier, threshold: number, segments: HullSegment[]): HullSegment[] {
-
-    let curves: { t: number, d: Point }[] = [];
-    let flatten = (point: Point) => flatten_point(point, 0);
-    let new_points = curve.points.map(flatten);
-    let flattened_curve = new Bezier(new_points);
-    let arcs = flattened_curve.arcs(threshold);
-
-    let temp = arcs.pop();
-
-    // We want to ignore the gunnel and bow curves
-    arcs.forEach(arc => {
-
-        let flat_point: Point = flattened_curve.get(arc.interval.end);
-        let unflat_point: Point = {
-            x: dist,
-            y: flat_point.x,
-            z: flat_point.y,
-        };
-
-        curves.push({
-            t: arc.interval.end,
-            d: unflat_point,
-        });
+        let new_point_set = set_to_consider.map(set_to_consider => set_to_consider.val);
+        new_point_set.unshift(bezier.owned_offsets[0]);
+        new_point_set.push(bezier.owned_offsets[bezier.owned_offsets.length - 1]);
+        bezier.owned_offsets = new_point_set;
     });
 
-    if (temp != undefined) {
-        arcs.push(temp);
-    }
-    if (segments.length == 0) {
-        // If this is the first set of offsets, just add them
-        let new_segment: HullSegment = {
-            dist,
-            hull_curve: curve,
-            offsets: [],
-        };
-        curves.forEach((val, idx) => {
-            new_segment.offsets[idx] = val;
-        });
-        segments.push(new_segment);
-
-    } else {
-
-        // Otherwise we need to remap the indexes based on the previous one
-        let next_segment: HullSegment = segments[segments.length - 1];
-        let new_offsets: { [index: number]: { t: number, d: Point } } = [];
-        curves.forEach((curve, idx) => {
-            let closest = 100000000000;
-            let closest_idx = idx;
-            for (const idx_prev in next_segment.offsets) {
-                let dist = abs(curve.t - next_segment.offsets[idx_prev].t);
-                if (dist < closest) {
-                    closest = dist;
-                    closest_idx = +idx_prev;
-                }
-            }
-            new_offsets[closest_idx] = curve;
+    let hull_beziers: HullBezier[] = bezier_point_list.map(bezier => {
+    
+        let t_points: Point[] = bezier.owned_offsets.map(offest => {
+            return {
+                x: offest.dist,
+                y: offest.interval.end,
+            };
         });
 
-        let new_segment: HullSegment = {
-            dist,
-            hull_curve: curve,
-            offsets: new_offsets,
+        let d_points: Point[] = bezier.owned_offsets.map(offset => {
+            return offset.interval.end_point;
+        });
+        
+        return {
+            start_seg_idx: bezier.owned_offsets[0].seg_idx,
+            end_seg_idx: bezier.owned_offsets[bezier.owned_offsets.length - 1].seg_idx,
+            t_curve: new Bezier(t_points),
+            d_curve: new Bezier(d_points),
         }
-        segments.push(new_segment);
-    }
+    });
 
-    return segments;
+    return hull_beziers;
+}
+
+function split_curve_by_arcs(dist: number, curve: Bezier, threshold: number, seg_idx: number): 
+{
+    new_segment: HullSegment,
+    offsets: BezierOffsetIntervals,
+} {
+
+    let flatten = (point: Point) => flatten_point(point, 0);
+    let flattened_curve = new Bezier(curve.points.map(flatten));
+    let arcs = flattened_curve.arcs(threshold);
+    arcs.pop();
+
+    // We want to ignore the gunnel and bow curves
+    let offsets = {
+        dist,
+        seg_idx,
+        intervals: arcs.map(arc => {
+            return {
+                ...arc.interval,
+                end_point: curve.get(arc.interval.end),
+            }
+        }),
+    };
+
+    let new_segment: HullSegment = {
+        dist,
+        hull_curve: curve,
+    };
+
+    return {
+        new_segment,
+        offsets,
+    }
 }
 
 export function draw_hull_curves(hull: BoxedPathHull, dimm: number): { lee: IModel, wind: IModel } {

@@ -7,7 +7,7 @@ import { BoxedPathHull, build_boxed_hull, draw_main_curves, split_curve_to_chine
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 15.5;
-let merge_threshold = 0.025;
+let merge_threshold = 0.0125;
 let hull_length_half = hull_length / 2.0;
 let hull_ratio = 1.0 / 9.0;
 let hull_width = hull_length * hull_ratio;
