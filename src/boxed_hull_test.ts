@@ -150,12 +150,13 @@ let {lee, wind} = draw_flattened_hull(boxed_path_hull);
 let x_offset = hull_length/7;
 if (draw_lee) {
     lee = MakerJs.model.rotate(lee, -90);
-    lee = MakerJs.model.mirror(lee, true, false);
+    lee = MakerJs.model.mirror(lee, true, true);
     lee = MakerJs.model.move(lee, [x_offset + gunnel_rise * 1.05, -hull_depth * 1.1])
     model_map["lee_flat"] = lee;
 }
 if (draw_wind) {
     wind = MakerJs.model.rotate(wind, -90);
+    wind = MakerJs.model.mirror(wind, false, true);
     wind = MakerJs.model.move(wind, [x_offset - gunnel_rise * 1.05, -hull_depth * 1.1])
     model_map["wind_flat"] = wind;
 }

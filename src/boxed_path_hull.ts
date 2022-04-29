@@ -30,16 +30,13 @@ interface DrawPoints {
 
 interface HullSegment {
     dist: number,
-    unroll_dist: number,
-    xz_intersect: Point,
-    xz_intersect_t: number,
     hull_curve: Bezier,
     offsets: { [index: number]: { t: number, d: Point } },
 }
 
 interface HullBezier {
-    start: number,
-    end: number,
+    start_seg_idx: number,
+    end_seg_idx: number,
     t_curve: Bezier,
     d_curve: Bezier,
 }
@@ -107,23 +104,33 @@ export function build_boxed_hull(
 function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[] {
 
     let bezier_curves: HullBezier[] = [];
-    let point_sets: { [idx: number]: { t: Point, d: Point }[] } = {};
-
+    let point_sets: {
+        [idx: number]: {
+            points: { t: Point, d: Point }[],
+            start_seg_idx: number,
+            end_seg_idx: number,
+        }
+    } = {};
     // Remap the segments to a per-line basis
-    segments.forEach(segment => {
-        for (const key in segment.offsets) {
+    segments.forEach((segment, idx) => {
+        for (let seg_key in segment.offsets) {
             let point: Point = {
                 x: segment.dist,
-                y: segment.offsets[key].t
+                y: segment.offsets[seg_key].t
             };
-            if (point_sets[key] == undefined) {
-                point_sets[key] = [];
+            if (point_sets[seg_key] == undefined) {
+                point_sets[seg_key] = {
+                    points: [],
+                    start_seg_idx: idx,
+                    end_seg_idx: idx,
+                };
             };
-            point_sets[key].push({ t: point, d: segment.offsets[key].d });
+            point_sets[seg_key].points.push({ t: point, d: segment.offsets[seg_key].d });
+            point_sets[seg_key].end_seg_idx = idx;
         }
     });
 
-    // For a test, take the first, last, and middle
+    //For a test, take the first, last, and middle
     for (const idx in point_sets) {
         let point_set = point_sets[idx];
         let new_set: { t: Point, d: Point }[] = [];
@@ -134,9 +141,9 @@ function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[
             val: { t: Point, d: Point },
         }[] = []
 
-        for (let i = 1; i < point_set.length - 1; i++) {
-            let next = point_set[i + 1];
-            let curr = point_set[i];
+        for (let i = 1; i < point_set.points.length - 1; i++) {
+            let next = point_set.points[i + 1];
+            let curr = point_set.points[i];
 
             let t_diff = abs(curr.t.y - next.t.y);
 
@@ -173,21 +180,20 @@ function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[
 
         new_set = new_set.concat(set_to_consider.map(val => val.val));
 
-        new_set.unshift(point_set[0]);
-        new_set.push(point_set[point_set.length - 1]);
-        point_sets[idx] = new_set;
+        new_set.unshift(point_set.points[0]);
+        new_set.push(point_set.points[point_set.points.length - 1]);
+        point_sets[idx].points = new_set;
     }
 
+    
     // Remap to HullBezier objects
     for (const idx in point_sets) {
         const point_set = point_sets[idx];
-        let start = point_set[0].d.x;
-        let end = point_set[point_set.length - 1].d.x;
         let new_hull_bezier: HullBezier = {
-            start,
-            end,
-            t_curve: new Bezier(point_set.map(val => val.t)),
-            d_curve: new Bezier(point_set.map(val => val.d)),
+            start_seg_idx: point_set.start_seg_idx,
+            end_seg_idx: point_set.end_seg_idx,
+            t_curve: new Bezier(point_set.points.map(val => val.t)),
+            d_curve: new Bezier(point_set.points.map(val => val.d)),
         };
         bezier_curves.push(new_hull_bezier);
     };
@@ -197,8 +203,6 @@ function process_segments_into_hull_bezier(segments: HullSegment[]): HullBezier[
 
 function add_segment_if_required(dist: number, curve: Bezier, threshold: number, segments: HullSegment[]): HullSegment[] {
 
-    let xz_intersect_t = get_bezier_t_at_dimm_dist(curve, 1, 0.0);
-    let xz_intersect = flatten_point(curve.get(xz_intersect_t), 1);
     let curves: { t: number, d: Point }[] = [];
     let flatten = (point: Point) => flatten_point(point, 0);
     let new_points = curve.points.map(flatten);
@@ -230,9 +234,6 @@ function add_segment_if_required(dist: number, curve: Bezier, threshold: number,
         // If this is the first set of offsets, just add them
         let new_segment: HullSegment = {
             dist,
-            unroll_dist: 0,
-            xz_intersect,
-            xz_intersect_t,
             hull_curve: curve,
             offsets: [],
         };
@@ -258,12 +259,9 @@ function add_segment_if_required(dist: number, curve: Bezier, threshold: number,
             }
             new_offsets[closest_idx] = curve;
         });
-        let unroll_dist = next_segment.unroll_dist + point_dist(xz_intersect, next_segment.xz_intersect);
+
         let new_segment: HullSegment = {
             dist,
-            unroll_dist,
-            xz_intersect,
-            xz_intersect_t,
             hull_curve: curve,
             offsets: new_offsets,
         }
@@ -319,110 +317,16 @@ function fill_node(node: FlattenNode, segments: HullSegment[], idx_end: number):
     let ref_dir_lower = node.ref_dir_lower;
     let prev_seg = segments[node.start_seg_idx];
     let bezier_b = bound_segment_with_flatten_node(prev_seg, node);
-    let prev_upper_t = node.upper_bound(prev_seg.dist);
-    let prev_lower_t = node.lower_bound(prev_seg.dist);
-    let revisit_segments: HullSegment[] = [];
 
     for (let i = node.start_seg_idx - 1; i >= idx_end; i--) {
-        
         let segment = segments[i];
         let bezier_a = bound_segment_with_flatten_node(segment, node);
 
-        /**
-         * Some segments overlap the gunnels. When a segment does, it needs to be divided into an up segment and down
-         *  segment. Both share a reference point along the y = 0/unroll curve, rather than simply taking the reference
-         *  point of the node. 
-         */
-        let segment_upper_t = node.upper_bound(segment.dist);
-        let segment_lower_t = node.lower_bound(segment.dist);
-        if (bezier_a.lower_bezier != undefined && bezier_b.lower_bezier != undefined) {
+        if (node.draw_up) {
 
-            reference = {
-                x: segment.unroll_dist,
-                y: 0,
-            }
-
-            if (prev_seg.xz_intersect_t > 0.0) {
-
-                let bezier_up_a = segment.hull_curve.split(segment.xz_intersect_t, segment_upper_t);
-                let bezier_up_b = prev_seg.hull_curve.split(prev_seg.xz_intersect_t, prev_upper_t);
-
-                let flattened_up = unroll_point_set(
-                    bezier_up_a.getLUT(),
-                    bezier_up_b.getLUT(),
-                    reference,
-                    pi / 2.0,
-                    false,
-                );
-                node.upper_nodes.push(flattened_up.a_flat[flattened_up.a_flat.length - 1]);
-
-                let bezier_down_a = segment.hull_curve.split(segment_lower_t, segment.xz_intersect_t);
-                let bezier_down_b = prev_seg.hull_curve.split(prev_lower_t, prev_seg.xz_intersect_t);
-                
-                let flattened_down = unroll_point_set(
-                    bezier_down_a.getLUT().reverse(),
-                    bezier_down_b.getLUT().reverse(),
-                    reference,
-                    3.0 * pi / 2.0,
-                    true,
-                );
-                node.lower_nodes.push(flattened_down.a_flat[flattened_down.a_flat.length - 1]);
-
-                ref_dir_upper = flattened_up.fnfn_less1_dir;
-                ref_dir_lower = flattened_down.fnfn_less1_dir;
-
-                if (node.draw_up) {
-                    reference = flattened_down.a_flat[flattened_down.a_flat.length - 1];
-                } else {
-                    reference = flattened_up.a_flat[flattened_up.a_flat.length - 1];
-                }
-
-                // With a valid reference point we can now iterate through the revisit_segments. These are generally the
-                //  bow points near the end of the hull. For simplicity we'll just roll these down
-                if (revisit_segments.length > 1) {
-                    let revisit_up: Point[] = [];
-                    let revisit_down: Point[] = [];
-                    let revisit_ref: Point = node.upper_nodes[0];
-                    let revisit_ref_dir: number = ref_dir_upper;
-                    console.log(revisit_ref, revisit_ref_dir)
-
-                    let prev_revisit = revisit_segments[0];
-                    for(let i = 1; i < revisit_segments.length; i++) {
-                        let revisit = revisit_segments[i];
-
-                        let bezier_revisit_a = bound_segment_with_flatten_node(revisit, node);
-                        let bezier_revisit_b = bound_segment_with_flatten_node(prev_revisit, node);
-
-                        let flatten_revisit = unroll_point_set(
-                            bezier_revisit_a.upper_bezier.getLUT().reverse(),
-                            bezier_revisit_b.upper_bezier.getLUT().reverse(),
-                            revisit_ref,
-                            revisit_ref_dir,
-                            false,                               
-                        );
-
-                        revisit_up.push(flatten_revisit.a_flat[0]);
-                        revisit_down.push(flatten_revisit.a_flat[flatten_revisit.a_flat.length - 1]);
-                        revisit_ref_dir = flatten_revisit.f1f4_dir;
-                        revisit_ref = flatten_revisit.a_flat[0];
-
-                        prev_revisit = revisit;
-                    }
-
-                    node.upper_nodes = revisit_up.reverse().concat(node.upper_nodes);
-                    node.lower_nodes = revisit_down.reverse().concat(node.lower_nodes);
-                    revisit_segments = [];
-                }
-            } else {
-
-                // If we've  found a segment above the "unroll" line, we'll need to revisit it to draw it properly
-                revisit_segments.unshift(prev_seg);
-            }
-        } else if (node.draw_up) {
-            
             let flattened = unroll_point_set(
-                bezier_a.upper_bezier.getLUT(),
-                bezier_b.upper_bezier.getLUT(),
+                bezier_a.getLUT(),
+                bezier_b.getLUT(),
                 reference,
                 ref_dir_lower,
                 false
@@ -438,8 +342,8 @@ function fill_node(node: FlattenNode, segments: HullSegment[], idx_end: number):
         } else if (!node.draw_up) {
 
             let flattened = unroll_point_set(
-                bezier_a.upper_bezier.getLUT().reverse(),
-                bezier_b.upper_bezier.getLUT().reverse(),
+                bezier_a.getLUT().reverse(),
+                bezier_b.getLUT().reverse(),
                 reference,
                 ref_dir_upper,
                 true
@@ -453,8 +357,6 @@ function fill_node(node: FlattenNode, segments: HullSegment[], idx_end: number):
             ref_dir_upper = flattened.f1f4_dir;
         }
 
-        prev_upper_t = segment_upper_t;
-        prev_lower_t = segment_lower_t;
         prev_seg = segment;
         bezier_b = bezier_a;
     }
@@ -475,12 +377,10 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
     * For consistency, nodes closer to the stern will be drawn TOWARDS THE NEGATIVE X DIRECTION
     */
     let build_initial_node = (segments: HullSegment[]): FlattenNode => {
-        let init_segment = segments[segments.length - 1];
-        let draw_start_x = init_segment.unroll_dist;
         return {
             start_seg_idx: segments.length - 1,
             draw_up: false,
-            reference_point: { x: draw_start_x, y: 0 },
+            reference_point: { x: 0, y: 0 },
             ref_dir_upper: 3.0 * pi / 2.0,
             ref_dir_lower: pi / 2.0,
             upper_bound: (dist: number) => 1.0,
@@ -501,7 +401,7 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
     let populate_nodes = (initial_node: FlattenNode, segments: HullSegment[], beziers: HullBezier[]) => {
 
         // We want to process the beziers in order from closes to bow back
-        let bezier_sort = (a: HullBezier, b: HullBezier) => { return b.end - a.end; };
+        let bezier_sort = (a: HullBezier, b: HullBezier) => { return b.end_seg_idx - a.end_seg_idx; };
         let sorted_beziers = beziers.sort(bezier_sort);
 
         // As we create children, their parents will be removed from here, and the new nodes will get added
@@ -513,9 +413,10 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
             // First try and find an appropriate bezier. If we can't find one there's likely something wrong
             let next_bezier = sorted_beziers[try_index];
             let bezier_end_t = next_bezier.t_curve.get(1.0).y;
+            let bezier_end_x = next_bezier.d_curve.get(1.0).x;
             let node_index = nodes_to_consider.findIndex((node) => {
-                return bezier_end_t < node.upper_bound(next_bezier.end) &&
-                    bezier_end_t > node.lower_bound(next_bezier.end)
+                return bezier_end_t < node.upper_bound(bezier_end_x) &&
+                        bezier_end_t > node.lower_bound(bezier_end_x)
             });
 
             // If for some reason no overlapping node is found, then we should increment the count. But it's likely that
@@ -532,8 +433,7 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
             try_index = 0;
 
             // This may seem counter intuitive, but it's just saying "the parent stops where it meets the curve"
-            let child_start_segment = closest_segment(segments, next_bezier.end);
-            let new_dirs = fill_node(parent_node, segments, child_start_segment.idx + 1);
+            let new_dirs = fill_node(parent_node, segments, next_bezier.end_seg_idx + 1);
 
             // With the parent node in hand we need to define our curve bound. This lets us find the curve t value at an
             //  arbitrary point along the hull
@@ -542,7 +442,7 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
             // Keep track of how the direction is flipping, the end of one node is the start of another (until the leaf
             //  nodes, which ACTUALLY end at 0)
             let new_upper: FlattenNode = {
-                start_seg_idx: child_start_segment.idx,
+                start_seg_idx: next_bezier.end_seg_idx,
                 draw_up: false,
                 reference_point: parent_node.upper_nodes[parent_node.upper_nodes.length - 1],
                 ref_dir_upper: new_dirs.ref_dir_upper,
@@ -557,7 +457,7 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
             nodes_to_consider.push(new_upper);
 
             let new_lower: FlattenNode = {
-                start_seg_idx: child_start_segment.idx,
+                start_seg_idx: next_bezier.end_seg_idx,
                 draw_up: true,
                 reference_point: parent_node.lower_nodes[parent_node.lower_nodes.length - 1],
                 ref_dir_upper: 0, // Won't actually be used
@@ -713,39 +613,10 @@ function unroll_point_set(a: Point[], b: Point[], f2_init: Point, f2f3_ang: numb
 
 }
 
-function bound_segment_with_flatten_node(segment: HullSegment, node: FlattenNode): {
-    upper_bezier : Bezier,
-    lower_bezier? : Bezier,
-} {
+function bound_segment_with_flatten_node(segment: HullSegment, node: FlattenNode): Bezier {
     let upper_bound = node.upper_bound(segment.dist);
     let lower_bound = node.lower_bound(segment.dist);
-    if (upper_bound > segment.xz_intersect_t && lower_bound < segment.xz_intersect_t) {
-        return {
-            upper_bezier: segment.hull_curve.split(segment.xz_intersect_t, upper_bound),
-            lower_bezier: segment.hull_curve.split(lower_bound, segment.xz_intersect_t),
-        }
-
-    }
-
-    return {
-        upper_bezier: segment.hull_curve.split(lower_bound, upper_bound),
-    }
-}
-
-function closest_segment(segments: HullSegment[], dist_x: number): { segment: HullSegment, idx: number } {
-    return segments.reduce(
-        ({ segment, idx, dist }, test_segment, test_idx) => {
-            let test_dist = abs(test_segment.dist - dist_x);
-            if (test_dist < dist) {
-                return {
-                    segment: test_segment,
-                    idx: test_idx,
-                    dist: test_dist
-                }
-            }
-            return { segment, idx, dist }
-        }, { segment: segments[0], idx: 0, dist: abs(segments[0].dist - dist_x) }
-    )
+    return segment.hull_curve.split(lower_bound, upper_bound);
 }
 
 export function hull_curve_at_t(hull: BoxedPathHull, t_gunnel: number): {
