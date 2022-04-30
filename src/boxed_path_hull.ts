@@ -4,7 +4,7 @@ import { bezierjs_to_beziercurve_dimm, flatten_bezier, flatten_bezierjs, flatten
 import * as fs from "fs";
 import { get_hull_curves_at_dist } from "./bezier_path_hull";
 import { abs, cos, flatten, floor, max, min, number, pi, sin } from "mathjs";
-import { apply_vector_mul, as_unit, bezier_length, circle_angle_bezierjs, circle_point_bezierjs, dist, point_dot_a, pythag_a_b, pythag_h_a, rot_point_ninty_clock, rot_point_ninty_cnt_clock } from "./math";
+import { apply_vector_mul, as_unit, bezier_length, bezier_points_to_control_order, circle_angle_bezierjs, circle_point_bezierjs, dist, point_dot_a, pythag_a_b, pythag_h_a, rot_point_ninty_clock, rot_point_ninty_cnt_clock } from "./math";
 
 const LEE_COLOR = "blue";
 const WIND_COLOR = "purple";
@@ -37,7 +37,6 @@ interface HullSegment {
 interface Interval {
     start: number,
     end: number,
-    end_point: Point,
 }
 
 interface BezierOffsetIntervals {
@@ -56,7 +55,6 @@ interface HullBezier {
     start_seg_idx: number,
     end_seg_idx: number,
     t_curve: Bezier,
-    d_curve: Bezier,
 }
 
 export interface BoxedPathHull {
@@ -178,9 +176,7 @@ function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): Hu
                     continue;
                 }
 
-                let size = interval.end - interval.start;
-                if (overlap / size > 0.95) {
-
+                if (overlap > 0) {
                     bezier.last_idx = i;
                     bezier.last_interval = interval;
                     bezier.owned_offsets.push({
@@ -196,58 +192,55 @@ function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): Hu
         prev_offset = offset;
     }
 
+    let upper_angle_bound = 3.0 * pi / 4.0;
+    let lower_angle_bound = pi / 4.0;
+
     bezier_point_list.forEach(bezier => {
-        let set_to_consider: {
-            idx: number,
-            delta: number,
-            val: BezierOffsetInterval,
-        }[] = []
 
-        let curr = bezier.owned_offsets[0];
-        for (let i = 1; i < bezier.owned_offsets.length - 1; i++) {
-            let next = bezier.owned_offsets[i];
-            let t_diff = abs(curr.interval.end - next.interval.end);
+        let offsets_to_keep: BezierOffsetInterval[] = [];
 
-            set_to_consider.push(
-                {
-                    idx: i,
-                    delta: t_diff,
-                    val: curr,
+        let prev_offset: BezierOffsetInterval = bezier.owned_offsets[0];
+        let prev_point: Point = {
+            x: bezier.owned_offsets[0].dist,
+            y: bezier.owned_offsets[0].interval.end,
+        }
+        for(let i = 1; i < bezier.owned_offsets.length; i++) {
+            let current_offset = bezier.owned_offsets[i];
+            let current_point: Point = {
+                x: current_offset.dist,
+                y: current_offset.interval.end,
+            };
+
+            let angle = circle_angle_bezierjs(prev_point, current_point);
+            let angle_mod = angle % pi;
+
+            // console.log(current_point.x - prev_point.x, current_point.y - prev_point.y);
+
+            if (angle_mod < upper_angle_bound && angle_mod > lower_angle_bound) {
+                if (angle < pi) {
+                    offsets_to_keep.push(prev_offset);
+                } else {
+                    offsets_to_keep.push(current_offset);
                 }
-            )
-            curr = next;
+
+            }
+
+            prev_offset = current_offset;
+            prev_point = current_point;
         }
 
-        set_to_consider = set_to_consider.sort((a, b) => {
-            if (a.delta > b.delta) {
-                return -1;
-            } else if (a.delta < b.delta) {
-                return 1;
-            } else {
-                return 0;
-            }
-        })
+        if (offsets_to_keep.length == 0) {
+            offsets_to_keep.push(bezier.owned_offsets[floor(bezier.owned_offsets.length/2)]);
+        }
+        
+        offsets_to_keep.unshift(bezier.owned_offsets[0]);
+        offsets_to_keep.push(bezier.owned_offsets[bezier.owned_offsets.length - 1]);
 
-        set_to_consider = set_to_consider.slice(0, 2);
-
-        set_to_consider = set_to_consider.sort((a, b) => {
-            if (a.idx < b.idx) {
-                return -1;
-            } else if (a.idx > b.idx) {
-                return 1;
-            } else {
-                return 0;
-            }
-        });
-
-        let new_point_set = set_to_consider.map(set_to_consider => set_to_consider.val);
-        new_point_set.unshift(bezier.owned_offsets[0]);
-        new_point_set.push(bezier.owned_offsets[bezier.owned_offsets.length - 1]);
-        bezier.owned_offsets = new_point_set;
+        bezier.owned_offsets = offsets_to_keep;
     });
 
     let hull_beziers: HullBezier[] = bezier_point_list.map(bezier => {
-    
+
         let t_points: Point[] = bezier.owned_offsets.map(offest => {
             return {
                 x: offest.dist,
@@ -255,15 +248,15 @@ function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): Hu
             };
         });
 
-        let d_points: Point[] = bezier.owned_offsets.map(offset => {
-            return offset.interval.end_point;
-        });
+        // console.log("T_POINTS=====")
+        // t_points.forEach(point => console.log(point))
+        // console.log("T_CURVES=====")
+        let t_curve = new Bezier(bezier_points_to_control_order(t_points, 2));
         
         return {
             start_seg_idx: bezier.owned_offsets[0].seg_idx,
             end_seg_idx: bezier.owned_offsets[bezier.owned_offsets.length - 1].seg_idx,
-            t_curve: new Bezier(t_points),
-            d_curve: new Bezier(d_points),
+            t_curve,
         }
     });
 
@@ -286,10 +279,7 @@ function split_curve_by_arcs(dist: number, curve: Bezier, threshold: number, seg
         dist,
         seg_idx,
         intervals: arcs.map(arc => {
-            return {
-                ...arc.interval,
-                end_point: curve.get(arc.interval.end),
-            }
+            return arc.interval;
         }),
     };
 
@@ -309,13 +299,26 @@ export function draw_hull_curves(hull: BoxedPathHull, dimm: number): { lee: IMod
     let lee_curves: IModelMap = {};
     let wind_curves: IModelMap = {};
 
+    let map_bezier_onto_segments = (segments: HullSegment[], bezier: HullBezier): IModel  => {
+        let points_to_draw: Point[] = [];
+        for (let i = bezier.start_seg_idx; i < bezier.end_seg_idx; i++){
+            let segment = segments[i];
+            let t = project_bezier_to_dimm(bezier.t_curve, 0, segment.dist);
+            let point_3d = segment.hull_curve.get(t.y);
+            let point_2d = flatten_point(point_3d, dimm);
+            points_to_draw.push(point_2d);
+        }
+
+        return new models.ConnectTheDots(false, points_to_draw.map(point_to_ipoint));
+    }
+
     hull.lee_beziers.forEach((curve, idx) => {
-        let drawn_curve: models.BezierCurve = bezierjs_to_beziercurve_dimm(curve.d_curve, dimm);
+        let drawn_curve: IModel = map_bezier_onto_segments(hull.lee_segments, curve);
         lee_curves["lee_hull_" + idx] = { layer: "red", ...drawn_curve };
     });
 
     hull.wind_beziers.forEach((curve, idx) => {
-        let drawn_curve: models.BezierCurve = bezierjs_to_beziercurve_dimm(curve.d_curve, dimm);
+        let drawn_curve: IModel = map_bezier_onto_segments(hull.wind_segments, curve);
         wind_curves["wind_hull_" + idx] = { layer: "green", ...drawn_curve };
     });
 
@@ -445,8 +448,9 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
 
             // First try and find an appropriate bezier. If we can't find one there's likely something wrong
             let next_bezier = sorted_beziers[try_index];
-            let bezier_end_t = next_bezier.t_curve.get(1.0).y;
-            let bezier_end_x = next_bezier.d_curve.get(1.0).x;
+            let bezier_t_end = next_bezier.t_curve.get(1.0);
+            let bezier_end_t = bezier_t_end.y;
+            let bezier_end_x = bezier_t_end.x;
             let node_index = nodes_to_consider.findIndex((node) => {
                 return bezier_end_t < node.upper_bound(bezier_end_x) &&
                         bezier_end_t > node.lower_bound(bezier_end_x)

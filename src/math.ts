@@ -1,6 +1,6 @@
 import { Bezier, Point } from "bezier-js";
 import { IPoint, models } from "makerjs";
-import { acos, exp, max, min, sqrt, sum } from "mathjs";
+import math, { acos, exp, floor, MathArray, Matrix, max, min, number, sqrt, sum, matrix, inv, multiply, transpose } from "mathjs";
 import { point_dist } from "./makerjs_tools";
 
 export function pythag_h_a(h: number, a: number) : number {
@@ -195,4 +195,153 @@ export function bezier_length(bezier: Bezier, t1: number, t2: number): number {
         prev_point = new_point;
     }
     return dist;
+}
+
+export function average_point(a: Point, b: Point): Point {
+    let x = (a.x + b.x)/2;
+    let y = (a.y + b.y)/2;
+    if (a.z != undefined && b.z != undefined) {
+        let z = (a.z + b.z)/2;
+        return {x, y, z}
+    }
+    return {x, y}
+}
+
+export function bezier_points_to_control_order(points: Point[], order: number): Point[] {
+    let bezier_points = bezier_controls_from_line_points(points);
+    while(bezier_points.length - 2 > order) {
+        bezier_points = reduce_bezier_control_order(bezier_points);
+    }
+    return bezier_points;
+}
+
+// Many thanks to https://pomax.github.io/bezierinfo/#curvefitting
+export function bezier_controls_from_line_points(points: Point[]) : Point[] {
+    
+    let controls: Point[] = [];
+
+    // This is just a straight-ish line so slap the midpoint in the middle
+    if (points.length == 2 || points.length > 4) {
+        let temp = points.pop();
+        if (temp != undefined) {
+            controls.push(points[0]);
+            controls.push(average_point(points[0], temp));
+            controls.push(temp);
+        }
+        return controls;
+    }
+
+    let t_values = calculate_t_vals(points);
+    let { T, Tt } = formTMatrix(t_values);
+    
+    // Constructing M Matrix
+    let m_data: number[][] = [];
+    let k = points.length - 1;
+    for ( let i = 0; i < points.length; i++) {
+        m_data.push(points.map(v => 0));
+        m_data[i][i] = binomial(k, i);
+    }
+    
+    for ( let c = 0, r; c < points.length; c++) {
+        for (r = c + 1; r < points.length; r++) {
+            let sign = (r + c) % 2 == 0 ? 1 : -1;
+            m_data[r][c] = sign * binomial(r, c) * m_data[r][r]; 
+        }
+    }
+
+    // console.log("-------")
+    // m_data.map(row => row.join(", ")).forEach(val => console.log(val))
+    
+    let m: Matrix = matrix(m_data);
+    let m_invert: Matrix = inv(m);
+    
+    // Getting to the good stuff
+    let t_trans_mul_t_inverse = inv(multiply(Tt, T));
+    let step_1 = multiply(t_trans_mul_t_inverse, Tt);
+    let step_2 = multiply(m_invert, step_1);
+    let x_big: Matrix = matrix(points.map(v => [v.x]))
+    let cx: Matrix = multiply(step_2, x_big); 
+    let x: number[][] = <number[][]>cx.toArray();
+
+    let y_big: Matrix = matrix(points.map(val => [val.y]));
+    let cy = multiply(step_2, y_big);
+    let y: number[][] = <number[][]>cy.toArray();
+
+    let bezier_points = x.map((row, idx) => {
+        return {
+            x: row[0],
+            y: y[idx][0],
+        }
+    });
+
+    // bezier_points.forEach(p => console.log(p))
+
+    // Re-adjust the start and end to prevent drift
+    bezier_points[0] = points[0];
+    bezier_points[bezier_points.length - 1] = points[points.length -1];
+
+    return bezier_points;
+}
+
+function calculate_t_vals(datum: Point[]): number[] {
+    const D = [0];
+    for(let i = 1; i< datum.length; i++) {
+        let dist = point_dist(datum[0], datum[1]);
+        D.push(dist + D[D.length - 1]);
+    }
+    let len = D[D.length - 1];
+    let S = D.map(val => val/len);
+    S[S.length - 1] = 1.0;
+    return S;
+}
+
+function formTMatrix(row: number[]): {
+    T: Matrix,
+    Tt: Matrix,
+} {
+    // it's actually easier to create the transposed
+    // version, and then (un)transpose that to get T!
+    let data = [];
+    for (var i = 0; i < row.length; i++) {
+      data.push(row.map((v) => v ** i));
+    }
+    const Tt = matrix(data);
+    const T = transpose(Tt);
+    return { T, Tt };
+}
+
+// Shamelessly taken from https://github.com/Pomax/BezierInfo-2/blob/aea1304d6ff9e3fcebcbca4f2dc219289df40195/docs/js/graphics-element/api/util/binomial.js
+var binomialCoefficients = [[1], [1, 1]];
+
+/**
+ * ... docs go here ...
+ */
+export function binomial(n: number, k: number): number {
+  if (n === 0) return 1;
+  var lut = binomialCoefficients;
+  while (n >= lut.length) {
+    var s = lut.length;
+    var nextRow = [1];
+    for (var i = 1, prev = s - 1; i < s; i++) {
+      nextRow[i] = lut[prev][i - 1] + lut[prev][i];
+    }
+    nextRow[s] = 1;
+    lut.push(nextRow);
+  }
+  return lut[n][k];
+}
+
+
+export function reduce_bezier_control_order(controls: Point[]) : Point[] {
+    if (controls.length <= 4) {
+        return controls;
+    }
+
+    let new_controls: Point[] = [];
+    new_controls.push(controls[0]);
+    new_controls.push(controls[1]);
+    new_controls.push(controls[controls.length -2]);
+    new_controls.push(controls[controls.length -1]);
+
+    return new_controls;
 }
