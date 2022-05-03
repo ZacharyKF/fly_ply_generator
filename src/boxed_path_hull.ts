@@ -1,10 +1,11 @@
-import MakerJs, { IModel, IModelMap, IPoint, models } from "makerjs";
+import MakerJs, { IModel, IModelMap, IPoint, model, models, point } from "makerjs";
 import BezierJs, { Projection, Bezier, Point, utils, Closest, Line, Arc } from "bezier-js";
 import { bezierjs_to_beziercurve_dimm, flatten_bezier, flatten_bezierjs, flatten_point, get_bezier_t_at_dimm_dist, point_dist, point_to_ipoint, project_bezier_to_dimm } from "./makerjs_tools";
 import * as fs from "fs";
 import { get_hull_curves_at_dist } from "./bezier_path_hull";
-import { abs, cos, flatten, floor, max, min, number, pi, sin } from "mathjs";
-import { apply_vector_mul, as_unit, bezier_length, bezier_points_to_control_order, circle_angle_bezierjs, circle_point_bezierjs, dist, point_dot_a, pythag_a_b, pythag_h_a, rot_point_ninty_clock, rot_point_ninty_cnt_clock } from "./math";
+import { abs, cos, flatten, floor, max, min, number, pi, sign, sin } from "mathjs";
+import { apply_vector_mul, as_unit, bezier_controls_from_line_points, bezier_length, circle_angle_bezierjs, circle_from_points, circle_point_bezierjs, dist, point_add, point_cross, point_cross_center, point_cross_center_2d, point_dot, point_dot_a, point_mul, point_sub, point_vec_dot_norm, pythag_a_b, pythag_h_a, rot_point_ninty_clock, rot_point_ninty_cnt_clock } from "./math";
+import { CatmullRom } from "./catmull_rom";
 
 const LEE_COLOR = "blue";
 const WIND_COLOR = "purple";
@@ -51,10 +52,10 @@ interface BezierOffsetInterval {
     interval: Interval,
 }
 
-interface HullBezier {
+interface HullCatmullRom {
     start_seg_idx: number,
     end_seg_idx: number,
-    t_curve: Bezier,
+    t_curve: CatmullRom,
 }
 
 export interface BoxedPathHull {
@@ -66,8 +67,8 @@ export interface BoxedPathHull {
     tumblehome: Bezier,
     lee_segments: HullSegment[],
     wind_segments: HullSegment[],
-    lee_beziers: HullBezier[],
-    wind_beziers: HullBezier[],
+    lee_curves: HullCatmullRom[],
+    wind_curves: HullCatmullRom[],
 }
 
 export function build_boxed_hull(
@@ -91,8 +92,8 @@ export function build_boxed_hull(
         tumblehome: new Bezier(tumblehome_points),
         lee_segments: [],
         wind_segments: [],
-        lee_beziers: [],
-        wind_beziers: [],
+        lee_curves: [],
+        wind_curves: [],
     };
 
     // Now we want to create N (precision) segments. Each segment is taken by getting the arcs at a particular point,
@@ -122,16 +123,16 @@ export function build_boxed_hull(
     boxed_hull.lee_segments = segments_lee;
     boxed_hull.wind_segments = segments_wind;
 
-    boxed_hull.lee_beziers = process_segments_into_hull_bezier(offsets_lee);
-    boxed_hull.wind_beziers = process_segments_into_hull_bezier(offsets_wind);
+    boxed_hull.lee_curves = process_segments_into_hull_bezier(offsets_lee);
+    boxed_hull.wind_curves = process_segments_into_hull_bezier(offsets_wind);
 
     return boxed_hull;
 }
 
-function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): HullBezier[] {
+function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): HullCatmullRom[] {
 
     // This is an array that we'll fill by matching segments appropiately to their parent beziers
-    let bezier_point_list: {
+    let curve_point_list: {
         last_idx: number,
         last_interval: Interval,
         owned_offsets: BezierOffsetInterval[],
@@ -139,14 +140,14 @@ function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): Hu
 
     let prev_offset = offsets[0];
     
-    prev_offset.intervals.forEach(offset => {
-        bezier_point_list.push({
+    prev_offset.intervals.forEach(interval => {
+        curve_point_list.push({
             last_idx: 0,
-            last_interval: offset,
+            last_interval: interval,
             owned_offsets: [{
                 dist: prev_offset.dist,
                 seg_idx: prev_offset.seg_idx,
-                interval: offset,
+                interval,
             }]
         });
     });
@@ -157,110 +158,122 @@ function process_segments_into_hull_bezier(offsets: BezierOffsetIntervals[]): Hu
         // We need to match, or not match all our intervals
         for(let interval of offset.intervals) {
 
-            for(let bezier of bezier_point_list) {
+            let largest_overlap = 0;
+            let largest_overlap_idx = 0;
+
+            curve_point_list.forEach((bezier, idx) => {
 
                 // Ignore beziers that have been ended
-                if (bezier.last_idx < i - 1) {
-                    continue;
-                }
+                if (bezier.last_idx == i - 1) {
+                    let overlap = min(interval.end, bezier.last_interval.end) -
+                        max(interval.start, bezier.last_interval.start);
 
-                // Now we want to find if our current segment has significant overlap with the last interval of the
-                //  bezier
-                let overlap = 0;
-                if (interval.end > bezier.last_interval.start && interval.end <= bezier.last_interval.end) {
-                    overlap = interval.end - bezier.last_interval.start;
-                } else if (interval.start >= bezier.last_interval.start && interval.start < bezier.last_interval.end) {
-                    overlap = bezier.last_interval.end - interval.start;
-                } else {
-                    // If there's no overlap then this isn't a match of any kind
-                    continue;
+                    if (overlap > 0 && overlap > largest_overlap) {
+                        largest_overlap = overlap;
+                        largest_overlap_idx = idx;
+                    }
                 }
+            });
 
-                if (overlap > 0) {
-                    bezier.last_idx = i;
-                    bezier.last_interval = interval;
-                    bezier.owned_offsets.push({
-                        dist: offset.dist,
-                        seg_idx: offset.seg_idx,
-                        interval: interval,
-                    });
-                    break;
-                }
+            if (largest_overlap > 0) {
+                curve_point_list[largest_overlap_idx].last_idx = i;
+                curve_point_list[largest_overlap_idx].last_interval = interval;
+                curve_point_list[largest_overlap_idx].owned_offsets.push({
+                    dist: offset.dist,
+                    seg_idx: offset.seg_idx,
+                    interval: interval,
+                });
             }
         }
 
         prev_offset = offset;
     }
 
-    let upper_angle_bound = 3.0 * pi / 4.0;
-    let lower_angle_bound = pi / 4.0;
+    curve_point_list.forEach(curve => {
 
-    bezier_point_list.forEach(bezier => {
-
-        let offsets_to_keep: BezierOffsetInterval[] = [];
-
-        let prev_offset: BezierOffsetInterval = bezier.owned_offsets[0];
-        let prev_point: Point = {
-            x: bezier.owned_offsets[0].dist,
-            y: bezier.owned_offsets[0].interval.end,
-        }
-        for(let i = 1; i < bezier.owned_offsets.length; i++) {
-            let current_offset = bezier.owned_offsets[i];
-            let current_point: Point = {
-                x: current_offset.dist,
-                y: current_offset.interval.end,
-            };
-
-            let angle = circle_angle_bezierjs(prev_point, current_point);
-            let angle_mod = angle % pi;
-
-            // console.log(current_point.x - prev_point.x, current_point.y - prev_point.y);
-
-            if (angle_mod < upper_angle_bound && angle_mod > lower_angle_bound) {
-                if (angle < pi) {
-                    offsets_to_keep.push(prev_offset);
-                } else {
-                    offsets_to_keep.push(current_offset);
-                }
-
-            }
-
-            prev_offset = current_offset;
-            prev_point = current_point;
-        }
-
-        if (offsets_to_keep.length == 0) {
-            offsets_to_keep.push(bezier.owned_offsets[floor(bezier.owned_offsets.length/2)]);
+        if (curve.owned_offsets.length < 3) {
+            return;
         }
         
-        offsets_to_keep.unshift(bezier.owned_offsets[0]);
-        offsets_to_keep.push(bezier.owned_offsets[bezier.owned_offsets.length - 1]);
+        // First we need to map the offsets to points
+        let points : {p: Point, idx: number}[] = curve.owned_offsets.map((offset, idx) => {
+            return {
+                p: {
+                    x: offset.dist,
+                    y: offset.interval.end,
+                },
+                idx,
+            }
+        });
 
-        bezier.owned_offsets = offsets_to_keep;
+        // Now, since we're dealing with a convex curve, we can abuse the fact that the angle between the midpoint, our
+        //  current point, and the test point, must be maximized
+        let center = point_mul(0.5, point_add(points[0].p, points[points.length -1].p));
+        {
+            let furthest_idx = 0;
+            let smallest_angle = 2 ** 63;
+            for (let i = 1; i < points.length - 1; i++ ) {
+                let angle = point_dot_a(points[i].p, points[0].p, points[points.length -1].p);
+                if (angle < smallest_angle) {
+                    smallest_angle = angle;
+                    furthest_idx = i;
+                }
+            }
+            center = circle_from_points(points[0].p, points[furthest_idx].p, points[points.length -1].p);
+        }
+        
+        // Our final list of valid points
+        let hull: {p: Point, idx: number}[] = [points[0]];
+
+        let idx = 0;
+        let last_point = points[idx];
+        let vec_last, vec_next, test_angle, temp_angle;
+        do {
+
+            vec_last = point_sub(center, last_point.p);
+            test_angle = 0;
+
+            for(let i = idx + 1; i < points.length; i++){
+
+                vec_next = point_sub(points[i].p, last_point.p);
+                temp_angle = Math.acos(point_vec_dot_norm(vec_last, vec_next));
+
+                if (temp_angle < test_angle) {
+                    continue;
+                }
+
+                test_angle = temp_angle;
+                idx = i;
+            }
+            
+            last_point = points[idx];
+            hull.push(last_point);
+        } while (idx < points.length - 1);
+
+        curve.owned_offsets = hull.map(hull_point => {
+                return curve.owned_offsets[hull_point.idx];
+        });
     });
 
-    let hull_beziers: HullBezier[] = bezier_point_list.map(bezier => {
+    let hull_curves: HullCatmullRom[] = curve_point_list.map(curve => {
 
-        let t_points: Point[] = bezier.owned_offsets.map(offest => {
+        let t_points: Point[] = curve.owned_offsets.map(offest => {
             return {
                 x: offest.dist,
                 y: offest.interval.end,
             };
         });
 
-        // console.log("T_POINTS=====")
-        // t_points.forEach(point => console.log(point))
-        // console.log("T_CURVES=====")
-        let t_curve = new Bezier(bezier_points_to_control_order(t_points, 2));
-        
+        let t_curve = new CatmullRom(t_points, 0.5, true);
+
         return {
-            start_seg_idx: bezier.owned_offsets[0].seg_idx,
-            end_seg_idx: bezier.owned_offsets[bezier.owned_offsets.length - 1].seg_idx,
+            start_seg_idx: curve.owned_offsets[0].seg_idx,
+            end_seg_idx: curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx,
             t_curve,
         }
     });
 
-    return hull_beziers;
+    return hull_curves;
 }
 
 function split_curve_by_arcs(dist: number, curve: Bezier, threshold: number, seg_idx: number): 
@@ -294,30 +307,32 @@ function split_curve_by_arcs(dist: number, curve: Bezier, threshold: number, seg
     }
 }
 
-export function draw_hull_curves(hull: BoxedPathHull, dimm: number): { lee: IModel, wind: IModel } {
+export function draw_hull_curves(hull: BoxedPathHull, dimm: number): { 
+    lee: IModel,
+    wind: IModel,
+} {
 
     let lee_curves: IModelMap = {};
     let wind_curves: IModelMap = {};
 
-    let map_bezier_onto_segments = (segments: HullSegment[], bezier: HullBezier): IModel  => {
+    let map_bezier_onto_segments = (segments: HullSegment[], hull_curve: HullCatmullRom): IModel  => {
         let points_to_draw: Point[] = [];
-        for (let i = bezier.start_seg_idx; i < bezier.end_seg_idx; i++){
+        for (let i = hull_curve.start_seg_idx; i <= hull_curve.end_seg_idx; i++){
             let segment = segments[i];
-            let t = project_bezier_to_dimm(bezier.t_curve, 0, segment.dist);
+            let t = hull_curve.t_curve.get_at_dimm_dist(0, segment.dist);
             let point_3d = segment.hull_curve.get(t.y);
             let point_2d = flatten_point(point_3d, dimm);
             points_to_draw.push(point_2d);
         }
-
         return new models.ConnectTheDots(false, points_to_draw.map(point_to_ipoint));
     }
 
-    hull.lee_beziers.forEach((curve, idx) => {
+    hull.lee_curves.forEach((curve, idx) => {
         let drawn_curve: IModel = map_bezier_onto_segments(hull.lee_segments, curve);
         lee_curves["lee_hull_" + idx] = { layer: "red", ...drawn_curve };
     });
 
-    hull.wind_beziers.forEach((curve, idx) => {
+    hull.wind_curves.forEach((curve, idx) => {
         let drawn_curve: IModel = map_bezier_onto_segments(hull.wind_segments, curve);
         wind_curves["wind_hull_" + idx] = { layer: "green", ...drawn_curve };
     });
@@ -434,10 +449,10 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
      *  their endpoint, create two nodes based on it, remove the parent from the original node list, and add the new 
      *  children.
      */
-    let populate_nodes = (initial_node: FlattenNode, segments: HullSegment[], beziers: HullBezier[]) => {
+    let populate_nodes = (initial_node: FlattenNode, segments: HullSegment[], beziers: HullCatmullRom[]) => {
 
         // We want to process the beziers in order from closes to bow back
-        let bezier_sort = (a: HullBezier, b: HullBezier) => { return b.end_seg_idx - a.end_seg_idx; };
+        let bezier_sort = (a: HullCatmullRom, b: HullCatmullRom) => { return b.end_seg_idx - a.end_seg_idx; };
         let sorted_beziers = beziers.sort(bezier_sort);
 
         // As we create children, their parents will be removed from here, and the new nodes will get added
@@ -474,7 +489,7 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
 
             // With the parent node in hand we need to define our curve bound. This lets us find the curve t value at an
             //  arbitrary point along the hull
-            let curve_bound = (dist: number) => project_bezier_to_dimm(next_bezier.t_curve, 0, dist).y;
+            let curve_bound = (dist: number) => next_bezier.t_curve.get_at_dimm_dist(0, dist).y;
 
             // Keep track of how the direction is flipping, the end of one node is the start of another (until the leaf
             //  nodes, which ACTUALLY end at 0)
@@ -512,8 +527,8 @@ export function draw_flattened_hull(hull: BoxedPathHull): { lee: IModel, wind: I
         nodes_to_consider.forEach(node => fill_node(node, segments, 0));
     }
 
-    populate_nodes(lee_initial_node, hull.lee_segments, hull.lee_beziers);
-    populate_nodes(wind_initial_node, hull.wind_segments, hull.wind_beziers);
+    populate_nodes(lee_initial_node, hull.lee_segments, hull.lee_curves);
+    populate_nodes(wind_initial_node, hull.wind_segments, hull.wind_curves);
 
     // To draw we just need to do a fairly simple recurvive descent, then map the points accordingly
     let lee = flatten_node_to_points(lee_initial_node, { lines: [], starts: [], ends: [] });
@@ -757,6 +772,56 @@ function calc_swap_diag(gunnel: Point, bow: Point, mag: number, tumblehome: numb
         }
     }
     return gunnel;
+}
+
+export function draw_t_points(hull: BoxedPathHull, dimm: number) : {
+    lee_t_lines: IModel,
+    wind_t_lines: IModel,
+} {
+
+    let lee_t_points: IModelMap = {};
+    let wind_t_points: IModelMap = {};
+
+    let find_closest_segment = (segments: HullSegment[], dist: number) : HullSegment => {
+        return segments.reduce(({d, seg}, new_seg) => {
+            let new_d = abs(new_seg.dist - dist);
+            if (new_d < d) {
+                return {
+                    d: new_d,
+                    seg: new_seg,
+                }
+            }
+            return {d, seg};
+        }, {d: abs(segments[0].dist - dist), seg: segments[0]}).seg;
+    };
+
+    let add_to_modelmap = (modelmap: IModelMap, prefix: string, segments: HullSegment[], curves: HullCatmullRom[]): void => {
+        curves.forEach((curve, idx) => {
+            let points: Point[] = [];
+
+            curve.t_curve.segments.forEach(segment => {
+
+                let p1_hull = find_closest_segment(segments, segment.p1.x);
+                let p2_hull = find_closest_segment(segments, segment.p2.x);
+
+                points.push(p1_hull.hull_curve.get(segment.p1.y));
+                points.push(p2_hull.hull_curve.get(segment.p2.y));
+            });
+
+            let to_display: IPoint[] = points.map(point => {
+                return point_to_ipoint(flatten_point(point, dimm));
+            });
+            modelmap[prefix + idx] = new models.ConnectTheDots(false, to_display);
+        });
+    };
+
+    add_to_modelmap(lee_t_points, "lee_t_points_", hull.lee_segments, hull.lee_curves);
+    add_to_modelmap(wind_t_points, "wind_t_points_", hull.wind_segments, hull.wind_curves);
+
+    return {
+        lee_t_lines: { layer: "fuchsia", models: lee_t_points},
+        wind_t_lines: {layer: "lime", models: wind_t_points},
+    }
 }
 
 export function draw_segments(hull: BoxedPathHull, dimm: number, number_segs: number) : {

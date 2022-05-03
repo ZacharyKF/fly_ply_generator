@@ -1,6 +1,6 @@
 import { Bezier, Point } from "bezier-js";
 import { IPoint, models } from "makerjs";
-import math, { acos, exp, floor, MathArray, Matrix, max, min, number, sqrt, sum, matrix, inv, multiply, transpose } from "mathjs";
+import math, { acos, exp, floor, MathArray, Matrix, max, min, number, sqrt, sum, matrix, inv, multiply, transpose, abs, pow } from "mathjs";
 import { point_dist } from "./makerjs_tools";
 
 export function pythag_h_a(h: number, a: number) : number {
@@ -35,6 +35,29 @@ export function circleFromThreePoints(a : IPoint, b : IPoint, c : IPoint) : IPoi
     return [bx + g * vx, by + g * vy];
 }
 
+export function circle_from_points(a : Point, b : Point, c : Point) : Point {
+    var ax = (a.x + b.x) / 2.0;
+    var ay = (a.y + b.y) / 2.0;
+    var ux = (a.y - b.y);
+    var uy = (b.x - a.x);
+    var bx = (b.x + c.x) / 2.0;
+    var by = (b.y + c.y) / 2.0;
+    var vx = (b.y - c.y);
+    var vy = (c.x - b.x);
+    var dx = ax - bx;
+    var dy = ay - by;
+    var vu = vx * uy - vy * ux;
+
+    // Circle is at infinity, so just return a center that's really far away
+    if (vu == 0.0){
+        var point_slope = rot_point_ninty_clock(point_sub(a, c));
+        return apply_vector_mul(a, 100000000000, point_slope);
+    }
+
+    var g = (dx * uy - dy * ux) / vu;
+    return {x: bx + g * vx, y: by + g * vy};
+}
+
 export function dot(center: IPoint, a: IPoint, b :IPoint): number {
     var vec_a = [a[0] - center[0], a[1] - center[1]];
     var vec_b = [b[0] - center[0], b[1] - center[1]];
@@ -43,6 +66,22 @@ export function dot(center: IPoint, a: IPoint, b :IPoint): number {
 
 export function dot_a(center: IPoint, a: IPoint, b :IPoint): number {
     return Math.acos(dot(center, a, b));
+}
+
+export function point_vec_dot(vec_a : Point, vec_b: Point) : number {
+    let sum = vec_a.x * vec_b.x + vec_a.y * vec_b.y;
+    if (vec_a.z != undefined && vec_b.z != undefined) {
+        sum += (vec_a.z * vec_b.z);
+    }
+    return sum;
+}
+
+export function point_vec_dot_norm(vec_a : Point, vec_b: Point) : number {
+    let sum = vec_a.x * vec_b.x + vec_a.y * vec_b.y;
+    if (vec_a.z != undefined && vec_b.z != undefined) {
+        sum += (vec_a.z * vec_b.z);
+    }
+    return sum/(point_magnitude(vec_a) * point_magnitude(vec_b));
 }
 
 export function point_dot(center: Point, a: Point, b :Point): number {
@@ -54,14 +93,11 @@ export function point_dot(center: Point, a: Point, b :Point): number {
         x: b.x - center.x,
         y: b.y - center.y,
     };
-    let sum = vec_a.x * vec_b.x + vec_a.y * vec_b.y;
     if (a.z != undefined && b.z != undefined && center.z != undefined) {
         vec_a.z = a.z - center.z;
         vec_b.z = b.z - center.z;
-        sum += vec_a.z * vec_b.z;
     }
-    
-    return sum/(point_magnitude(vec_a) * point_magnitude(vec_b));
+    return point_vec_dot_norm(vec_a, vec_b);
 }
 
 export function point_dot_a(center: Point, a: Point, b :Point): number {
@@ -81,11 +117,7 @@ export function magnitude(a: IPoint) : number {
 }
 
 export function point_magnitude(a: Point) : number {
-    let sum = a.x * a.x + a.y * a.y;
-    if (a.z != undefined) {
-        sum += a.z * a.z;
-    }
-    return Math.sqrt(sum);
+    return Math.sqrt(point_vec_dot(a, a));
 }
 
 export function scale_point(a: Point, s: number) : Point {
@@ -207,21 +239,13 @@ export function average_point(a: Point, b: Point): Point {
     return {x, y}
 }
 
-export function bezier_points_to_control_order(points: Point[], order: number): Point[] {
-    let bezier_points = bezier_controls_from_line_points(points);
-    while(bezier_points.length - 2 > order) {
-        bezier_points = reduce_bezier_control_order(bezier_points);
-    }
-    return bezier_points;
-}
-
 // Many thanks to https://pomax.github.io/bezierinfo/#curvefitting
 export function bezier_controls_from_line_points(points: Point[]) : Point[] {
     
     let controls: Point[] = [];
 
     // This is just a straight-ish line so slap the midpoint in the middle
-    if (points.length == 2 || points.length > 4) {
+    if (points.length == 2) {
         let temp = points.pop();
         if (temp != undefined) {
             controls.push(points[0]);
@@ -242,8 +266,8 @@ export function bezier_controls_from_line_points(points: Point[]) : Point[] {
         m_data[i][i] = binomial(k, i);
     }
     
-    for ( let c = 0, r; c < points.length; c++) {
-        for (r = c + 1; r < points.length; r++) {
+    for ( let c = 0; c < points.length; c++) {
+        for (let r = c + 1; r < points.length; r++) {
             let sign = (r + c) % 2 == 0 ? 1 : -1;
             m_data[r][c] = sign * binomial(r, c) * m_data[r][r]; 
         }
@@ -274,8 +298,6 @@ export function bezier_controls_from_line_points(points: Point[]) : Point[] {
         }
     });
 
-    // bezier_points.forEach(p => console.log(p))
-
     // Re-adjust the start and end to prevent drift
     bezier_points[0] = points[0];
     bezier_points[bezier_points.length - 1] = points[points.length -1];
@@ -285,9 +307,9 @@ export function bezier_controls_from_line_points(points: Point[]) : Point[] {
 
 function calculate_t_vals(datum: Point[]): number[] {
     const D = [0];
-    for(let i = 1; i< datum.length; i++) {
-        let dist = point_dist(datum[0], datum[1]);
-        D.push(dist + D[D.length - 1]);
+    for(let i = 1; i < datum.length; i++) {
+        let dist = point_dist(datum[i], datum[i-1]);
+        D.push(dist + D[i - 1]);
     }
     let len = D[D.length - 1];
     let S = D.map(val => val/len);
@@ -331,17 +353,81 @@ export function binomial(n: number, k: number): number {
   return lut[n][k];
 }
 
-
-export function reduce_bezier_control_order(controls: Point[]) : Point[] {
-    if (controls.length <= 4) {
-        return controls;
+export function point_cross_center_2d(a: Point, c: Point, b: Point): number {
+    let a_tmp = {
+        x : a.x - c.x,
+        y : a.y - c.y,
     }
+    let b_tmp = {
+        x : b.x - c.x,
+        y : b.y - c.y,
+    }
+    return (a_tmp.x * b_tmp.y) - (a_tmp.y * b_tmp.x);
+}
 
-    let new_controls: Point[] = [];
-    new_controls.push(controls[0]);
-    new_controls.push(controls[1]);
-    new_controls.push(controls[controls.length -2]);
-    new_controls.push(controls[controls.length -1]);
+export function point_cross_center(a: Point, c: Point, b: Point) : Point {
+    let a_tmp = {
+        x : a.x - c.x,
+        y : a.y - c.y,
+        z : (a.z ? a.z : 0) - (c.z ? c.z : 0)
+    }
+    let b_tmp = {
+        x : b.x - c.x,
+        y : b.y - c.y,
+        z : (b.z ? b.z : 0) - (c.z ? c.z : 0)
+    }
+    return point_cross(a_tmp, b_tmp);
+}
 
-    return new_controls;
+export function point_cross(a: Point, b: Point): Point {
+    let a_z = a.z == undefined ? 0 : a.z;
+    let b_z = b.z == undefined ? 0 : b.z;
+
+    return {
+        x: (a.y * b_z) - (a_z * b.y),
+        y: (a_z * b.x) - (a.x * b_z),
+        z: (a.x * b.y) - (a.y * b.x),
+    }
+}
+
+export function point_add(a: Point, b: Point) : Point {
+    if (a.z != undefined && b.z != undefined) {
+        return {
+            x: a.x + b.x,
+            y: a.y + b.y,
+            z: a.z + b.y,
+        }
+    }
+    return {
+        x: a.x + b.x,
+        y: a.y + b.y,
+    }
+}
+
+export function point_sub(a: Point, b: Point) : Point {
+    if (a.z != undefined && b.z != undefined) {
+        return {
+            x: a.x - b.x,
+            y: a.y - b.y,
+            z: a.z - b.y,
+        }
+    }
+    return {
+        x: a.x - b.x,
+        y: a.y - b.y,
+    }
+}
+
+export function point_mul(a: number, b: Point) : Point {
+    if (b.z != undefined) {
+        return {
+            x: a * b.x,
+            y: a * b.y,
+            z: a * b.y,
+        }
+    }
+    return {
+        x: a * b.x,
+        y: a * b.y,
+    }
 }

@@ -3,11 +3,11 @@ import BezierJs, { Projection, Bezier, Point, utils, Closest } from "bezier-js";
 import { bezierjs_arc_to_makerjs_arc, bezier_to_beziercurve, color_naturally, flatten_bezierjs, point_to_ipoint } from "./makerjs_tools";
 import * as fs from "fs";
 import { tan, pi, min, max } from "mathjs";
-import { BoxedPathHull, build_boxed_hull, draw_main_curves, split_curve_to_chines, split_curve_to_natural_arcs, draw_hull_curves, draw_flattened_hull, draw_segments } from "./boxed_path_hull";
+import { BoxedPathHull, build_boxed_hull, draw_main_curves, split_curve_to_chines, split_curve_to_natural_arcs, draw_hull_curves, draw_flattened_hull, draw_segments, draw_t_points } from "./boxed_path_hull";
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 15.5;
-let merge_threshold = 0.005;
+let merge_threshold = 0.0012;
 let hull_length_half = hull_length / 2.0;
 let hull_ratio = 1.0 / 9.0;
 let hull_width = hull_length * hull_ratio;
@@ -18,10 +18,10 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 let horizontal_flat = 3.0 / 5.0;
 let hull_depth = 2.5;
 let gunnel_rise = hull_depth / 5.0;
-let slices = 500;
+let slices = 200;
 let segments_drawn = 50;
 let draw_lee = true;
-let draw_wind = true;
+let draw_wind = false;
 
 let control_points: Point[] = [
     { x: 10.0, y: 1.0 },
@@ -133,13 +133,16 @@ for (let i = 0; i < 3; i++) {
     proj_maps[i]["main_curves"] = draw_main_curves(boxed_path_hull, i);
     let {lee, wind} = draw_hull_curves(boxed_path_hull,i);
     let {lee_segments, wind_segments} = draw_segments(boxed_path_hull, i, segments_drawn);
+    let { lee_t_lines, wind_t_lines} = draw_t_points(boxed_path_hull, i);
     if (draw_lee) {
-        proj_maps[i]["hull_curves_lee"] = lee;
         proj_maps[i]["hull_segments_lee"] = lee_segments;
+        proj_maps[i]["hull_t_lines_lee"] = lee_t_lines;        
+        proj_maps[i]["hull_curves_lee"] = lee;
     }
     if (draw_wind) {
-        proj_maps[i]["hull_curves_wind"] = wind;
         proj_maps[i]["hull_segments_wind"] = wind_segments;
+        proj_maps[i]["hull_t_lines_wind"] = wind_t_lines;
+        proj_maps[i]["hull_curves_wind"] = wind;
     }
 }
 
