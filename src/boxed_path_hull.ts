@@ -99,6 +99,10 @@ export class BoxedPathHull implements DrawableHull {
       add_to_side(i, gunnel_curve_wind, segments_wind, offsets_wind);
     }
 
+    // A bit of a work-around for drawing the nose tip. I need to add logic for a "tip segment"
+    add_to_side(dist_max * 0.9995, gunnel_curve_lee, segments_lee, offsets_lee);
+    add_to_side(dist_max * 0.9995, gunnel_curve_wind, segments_wind, offsets_wind);
+
     let lee_curves = BoxedPathHull.process_segments_into_hull_curve(
       offsets_lee,
       curve_colinearity_tolerance
@@ -139,9 +143,10 @@ export class BoxedPathHull implements DrawableHull {
   }
   draw_flattened_hull(
     lee: boolean,
-    wind: boolean
+    wind: boolean,
+    bulkheads: number[],
   ): { lee: IModel; wind: IModel } {
-    return this.hull_internal.draw_flattened_hull(lee, wind);
+    return this.hull_internal.draw_flattened_hull(lee, wind, bulkheads);
   }
 
   static hull_at_d(

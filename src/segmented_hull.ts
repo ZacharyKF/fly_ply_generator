@@ -51,36 +51,29 @@ export class SegmentedHull implements DrawableHull {
     this.wind_curves = wind_curves;
   }
 
-  closest_segments(dist: number): {
-    lee : HullSegment;
-    wind: HullSegment;
-  } {
-    let closest = this.lee_segments.reduce(({seg, idx, d}, new_seg, new_idx) => {
+  closest_segments(dist: number) : number {
+    let closest = this.lee_segments.reduce(({idx, d}, new_seg, new_idx) => {
       let new_d = abs(new_seg.dist - dist);
       if(new_d < d){
         return {
-          seg: new_seg,
           idx: new_idx,
           d: new_d,
         }
       }
-      return {seg, idx, d}
-    }, {seg: this.lee_segments[0], idx: 0, d: abs(this.lee_segments[0].dist - dist)});
+      return { idx, d}
+    }, {idx: 0, d: abs(this.lee_segments[0].dist - dist)});
 
-    return {
-      lee: closest.seg,
-      wind: this.wind_segments[closest.idx],
-    }
+    return closest.idx;
   }
 
   draw_bulkhead(dist: number): IModel {
     
-    let closest_segs = this.closest_segments(dist);
+    let closest_seg = this.closest_segments(dist);
     let points: Point[] = [];
 
     for(let i = 0; i < 1.0; i += 0.005) {
-      points.push(closest_segs.lee.hull_curve.get(i));
-      points.unshift(closest_segs.wind.hull_curve.get(i));
+      points.push(this.lee_segments[closest_seg].hull_curve.get(i));
+      points.unshift(this.wind_segments[closest_seg].hull_curve.get(i));
     }
 
     let ipoints = points.map(p => point_to_ipoint(flatten_point(p, 0)));
@@ -120,11 +113,14 @@ export class SegmentedHull implements DrawableHull {
   fill_node(
     node: FlattenNode,
     segments: HullSegment[],
-    idx_end: number
+    idx_end: number,
+    bulkheads: Set<number>,
   ): {
     ref_dir_upper: number;
     ref_dir_lower: number;
+    bulkhead_lines: Point[][];
   } {
+    let bulkhead_lines: Point[][] = [];
     let reference = node.reference_point;
     let ref_dir_upper = node.ref_dir_upper;
     let ref_dir_lower = node.ref_dir_lower;
@@ -147,10 +143,18 @@ export class SegmentedHull implements DrawableHull {
         if (i == node.start_seg_idx - 1) {
           node.upper_nodes.push(flattened.b_flat[flattened.b_flat.length - 1]);
           node.lower_nodes.push(flattened.b_flat[0]);
+
+          if(bulkheads.has(node.start_seg_idx)) {
+            bulkhead_lines.push(flattened.b_flat);
+          }
         }
 
         node.upper_nodes.push(flattened.a_flat[flattened.a_flat.length - 1]);
         node.lower_nodes.push(flattened.a_flat[0]);
+
+        if(bulkheads.has(i)) {
+          bulkhead_lines.push(flattened.a_flat);
+        }
 
         reference = flattened.a_flat[0];
         ref_dir_lower = flattened.f1f4_dir;
@@ -167,10 +171,18 @@ export class SegmentedHull implements DrawableHull {
         if (i == node.start_seg_idx - 1) {
           node.upper_nodes.push(flattened.b_flat[0]);
           node.lower_nodes.push(flattened.b_flat[flattened.b_flat.length - 1]);
+
+          if(bulkheads.has(node.start_seg_idx)) {
+            bulkhead_lines.push(flattened.b_flat);
+          }
         }
 
         node.upper_nodes.push(flattened.a_flat[0]);
         node.lower_nodes.push(flattened.a_flat[flattened.a_flat.length - 1]);
+
+        if(bulkheads.has(i)) {
+          bulkhead_lines.push(flattened.a_flat);
+        }
 
         reference = flattened.a_flat[0];
         ref_dir_lower = flattened.fnfn_less1_dir;
@@ -184,13 +196,24 @@ export class SegmentedHull implements DrawableHull {
     return {
       ref_dir_upper,
       ref_dir_lower,
+      bulkhead_lines,
     };
   }
 
   draw_flattened_hull(
     draw_lee: boolean,
-    draw_wind: boolean
+    draw_wind: boolean,
+    bulkheads: number[],
   ): { lee: IModel; wind: IModel } {
+
+    /**
+     * We need a set of segments to use for generating bulkheads
+     */
+    let bulk_head_segs: Set<number> = new Set();
+    bulkheads.forEach(d => {
+      bulk_head_segs.add(this.closest_segments(d));
+    });
+
     /**
      * We need to build the initial node. The key here is that the segment will be drawn along the line from start to
      *  end. Start is CLOSER TO THE BOW, while end is CLOSER TO THE STERN. End is assumed to be 0, then updated during
@@ -223,7 +246,10 @@ export class SegmentedHull implements DrawableHull {
       initial_node: FlattenNode,
       segments: HullSegment[],
       curves: HullCurve[]
-    ) => {
+    ): Point[][] => {
+
+      let bulkhead_lines: Point[][] = [];
+
       // We want to process the curves in order from closes to bow back
       let bezier_sort = (a: HullCurve, b: HullCurve) => {
         return b.end_seg_idx - a.end_seg_idx;
@@ -267,7 +293,9 @@ export class SegmentedHull implements DrawableHull {
           parent_node,
           segments,
           next_curve.end_seg_idx,
+          bulk_head_segs,
         );
+        bulkhead_lines = bulkhead_lines.concat(new_dirs.bulkhead_lines);
 
         // With the parent node in hand we need to define our curve bound. This lets us find the curve t value at an
         //  arbitrary point along the hull
@@ -309,7 +337,11 @@ export class SegmentedHull implements DrawableHull {
         nodes_to_consider.push(new_lower);
       }
 
-      nodes_to_consider.forEach((node) => this.fill_node(node, segments, 0));
+      nodes_to_consider.forEach((node) => {
+        bulkhead_lines = bulkhead_lines.concat(this.fill_node(node, segments, 0, bulk_head_segs).bulkhead_lines);
+      });
+
+      return bulkhead_lines;
     };
 
     let result = {
@@ -318,20 +350,30 @@ export class SegmentedHull implements DrawableHull {
     }
     if (draw_lee) {
       let lee_initial_node = build_initial_node(this.lee_segments);
-      populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
+      let lee_model_map: IModelMap = {};
+      populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves).forEach((line, idx) => {
+        lee_model_map["bulkhead_" + idx] = {
+          layer: "blue",
+          ...new models.ConnectTheDots(false, line.map(point_to_ipoint)),
+        }
+      });
       let lee = this.flatten_node_to_points(lee_initial_node, []);
-      result.lee = {
-        ...new models.ConnectTheDots(true, lee.map(point_to_ipoint)),
-      };
+      lee_model_map["outline"] = new models.ConnectTheDots(true, lee.map(point_to_ipoint));
+      result.lee = {models: lee_model_map};
     }
 
     if (draw_wind) {
       let wind_initial_node = build_initial_node(this.wind_segments);
-      populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves);
+      let wind_model_map: IModelMap = {};
+      populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves).forEach((line, idx) => {
+        wind_model_map["bulkhead_" + idx] = {
+          layer: "blue",
+          ...new models.ConnectTheDots(false, line.map(point_to_ipoint)),
+        }
+      });
       let wind = this.flatten_node_to_points(wind_initial_node, []);
-      result.wind = {
-        ...new models.ConnectTheDots(true, wind.map(point_to_ipoint)),
-      };
+      wind_model_map["outline"] = new models.ConnectTheDots(true, wind.map(point_to_ipoint));
+      result.wind = {models: wind_model_map};
     }
 
     return result;

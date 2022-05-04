@@ -15,7 +15,8 @@ export interface DrawableHull {
   ): IModel;
   draw_flattened_hull(
     lee: boolean,
-    wind: boolean
+    wind: boolean,
+    bulkheads: number[],
   ): { lee: IModel; wind: IModel };
   draw_bulkhead(dist: number) : IModel;
 }
@@ -28,7 +29,7 @@ let export_svg = (name: string, model: IModel) => {
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 15.5;
-let arc_threshold = 0.0065;
+let arc_threshold = 0.0075;
 let hull_length_half = hull_length / 2.0;
 let hull_ratio = 1.0 / 10.0;
 let hull_width = hull_length * hull_ratio;
@@ -39,7 +40,7 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 let horizontal_flat = 2.0 / 3.0;
 let hull_depth = 2.25;
 let gunnel_rise = hull_depth / 4.0;
-let slices = 700;
+let slices = 300;
 let segments_drawn = 10;
 let curve_colinearity_tolerance = 0.95;
 let draw_lee = true;
@@ -174,7 +175,7 @@ projections[0] = MakerJs.model.move(MakerJs.model.rotate(projections[0], 90), [
 ]);
 projections[1] = MakerJs.model.move(projections[1], [0, gunnel_rise * 2]);
 
-let { lee, wind } = boxed_path_hull.draw_flattened_hull(draw_lee, draw_wind);
+let { lee, wind } = boxed_path_hull.draw_flattened_hull(draw_lee, draw_wind, bulk_heads);
 let x_offset = hull_length / 7;
 if (draw_lee) {
   let name = "lee_flat";
