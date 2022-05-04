@@ -1,17 +1,13 @@
-import {
-  Bezier, Point
-} from "bezier-js";
-import MakerJs, {
-  IModel, models
-} from "makerjs";
-import {
-  abs, max,
-  min
-} from "mathjs";
+import { Bezier, Point } from "bezier-js";
+import MakerJs, { IModel, models } from "makerjs";
+import { abs, max, min } from "mathjs";
 import { CustomBezier } from "./bezier";
 import { DrawableHull } from "./boxed_hull_test";
 import {
-  flatten_point, get_bezier_p_at_dimm_dist, get_bezier_t_at_dimm_dist, point_to_ipoint
+  flatten_point,
+  get_bezier_p_at_dimm_dist,
+  get_bezier_t_at_dimm_dist,
+  point_to_ipoint,
 } from "./makerjs_tools";
 import {
   circle_from_points,
@@ -20,12 +16,9 @@ import {
   point_mul,
   point_sub,
   point_vec_dot,
-  point_vec_dot_norm
+  point_vec_dot_norm,
 } from "./math";
 import { HullCurve, HullSegment, SegmentedHull } from "./segmented_hull";
-
-const LEE_COLOR = "blue";
-const WIND_COLOR = "purple";
 
 export interface Interval {
   start: number;
@@ -99,8 +92,9 @@ export class BoxedPathHull implements DrawableHull {
     };
 
     let dist_max = bilge_curve.get(1.0).x;
-    let step = 1.0 / dist_max;
-    for (let i = 0.0; i <= dist_max; i += step) {
+
+    let step = dist_max / segment_steps;
+    for (let i = 0; i <= dist_max - step; i += step) {
       add_to_side(i, gunnel_curve_lee, segments_lee, offsets_lee);
       add_to_side(i, gunnel_curve_wind, segments_wind, offsets_wind);
     }
@@ -129,15 +123,26 @@ export class BoxedPathHull implements DrawableHull {
     this.tumblehome_curve = tumblehome_curve;
     this.hull_internal = hull_internal;
   }
-    draw_hull_curves(dimm: number, lee: boolean, wind: boolean): MakerJs.IModel {
-        return this.hull_internal.draw_hull_curves(dimm, lee, wind);
-    }
-    draw_segments(dimm: number, number_segs: number, lee: boolean, wind: boolean): MakerJs.IModel {
-        return this.hull_internal.draw_segments(dimm, number_segs, lee, wind);
-    }
-    draw_flattened_hull(lee: boolean, wind: boolean): {lee: IModel, wind: IModel} {
-        return this.hull_internal.draw_flattened_hull(lee, wind);
-    }
+  draw_bulkhead(dist: number): MakerJs.IModel {
+    return this.hull_internal.draw_bulkhead(dist);
+  }
+  draw_hull_curves(dimm: number, lee: boolean, wind: boolean): MakerJs.IModel {
+    return this.hull_internal.draw_hull_curves(dimm, lee, wind);
+  }
+  draw_segments(
+    dimm: number,
+    number_segs: number,
+    lee: boolean,
+    wind: boolean
+  ): MakerJs.IModel {
+    return this.hull_internal.draw_segments(dimm, number_segs, lee, wind);
+  }
+  draw_flattened_hull(
+    lee: boolean,
+    wind: boolean
+  ): { lee: IModel; wind: IModel } {
+    return this.hull_internal.draw_flattened_hull(lee, wind);
+  }
 
   static hull_at_d(
     gunnel_curve: Bezier,
@@ -151,7 +156,7 @@ export class BoxedPathHull implements DrawableHull {
     segment: HullSegment;
     offsets: CurveOffsetIntervals;
   } {
-    let gunnel_t: number = get_bezier_t_at_dimm_dist( gunnel_curve ,0, dist);
+    let gunnel_t: number = get_bezier_t_at_dimm_dist(gunnel_curve, 0, dist);
     let gunnel: Point = gunnel_curve.get(gunnel_t);
     let bilge: Point = get_bezier_p_at_dimm_dist(bilge_curve, 0, dist);
     let control: Point = control_curve.get(gunnel_t);
@@ -173,7 +178,9 @@ export class BoxedPathHull implements DrawableHull {
       hull_curve,
     };
 
-    let flattened_curve = new Bezier(segment_points.map((point) => flatten_point(point, 0)));
+    let flattened_curve = new Bezier(
+      segment_points.map((point) => flatten_point(point, 0))
+    );
     let arcs = flattened_curve.arcs(arc_threshold);
     arcs.pop();
 
@@ -366,34 +373,34 @@ export class BoxedPathHull implements DrawableHull {
       // return new CatmullRom(t_points, 2, true, curve.owned_offsets[0].seg_idx, curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx);
       return {
         start_seg_idx: curve.owned_offsets[0].seg_idx,
-        end_seg_idx: curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx,
+        end_seg_idx:
+          curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx,
         curve: new CustomBezier(t_points),
-      }
+      };
     });
 
     return hull_curves;
   }
 
   draw_main_curves(dimm: number): IModel {
-
     let curve_to_model = (curve: Bezier): IModel => {
       let points: Point[] = [];
-      for(let i = 0; i < 1.0; i += 0.01) {
+      for (let i = 0; i <= 1.0; i += 0.0025) {
         points.push(flatten_point(curve.get(i), dimm));
       }
       return new models.ConnectTheDots(false, points.map(point_to_ipoint));
-    } 
-   let gunnel_lee = curve_to_model(this.gunnel_curve_lee); 
-   let gunnel_wind = curve_to_model(this.gunnel_curve_wind);
-   let bilge = curve_to_model(this.bilge_curve);
-  
-   return {
-     models: {
-       gunnel_lee,
-       gunnel_wind,
-       bilge,
-     },
-   };
+    };
+    let gunnel_lee = curve_to_model(this.gunnel_curve_lee);
+    let gunnel_wind = curve_to_model(this.gunnel_curve_wind);
+    let bilge = curve_to_model(this.bilge_curve);
+
+    return {
+      models: {
+        gunnel_lee,
+        gunnel_wind,
+        bilge,
+      },
+    };
   }
 
   static calc_swap_diag(
@@ -408,18 +415,18 @@ export class BoxedPathHull implements DrawableHull {
         y: (gunnel.y + bow.y) / 2.0,
         z: (gunnel.z + bow.z) / 2.0,
       };
-  
+
       // Since we know that we're projecting onto the YZ plane, we can just negate the Y to rotate
       let vec_diff: Point = {
         x: (gunnel.x - bow.x) / 2.0,
         y: (-1.0 * (gunnel.y - bow.y)) / 2.0,
         z: (gunnel.z - bow.z) / 2.0,
       };
-  
+
       // We only care about the YZ magnitude, so we can use that to modify the vector
       let vec_mag =
         mag / Math.sqrt(vec_diff.x * vec_diff.x + vec_diff.y * vec_diff.y);
-  
+
       if (vec_diff.z != undefined && mid_point.z != undefined) {
         return {
           x: mid_point.x,

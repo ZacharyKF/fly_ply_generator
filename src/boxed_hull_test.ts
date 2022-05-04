@@ -17,11 +17,18 @@ export interface DrawableHull {
     lee: boolean,
     wind: boolean
   ): { lee: IModel; wind: IModel };
+  draw_bulkhead(dist: number) : IModel;
+}
+
+let export_svg = (name: string, model: IModel) => {
+  let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 500);
+  var svg = MakerJs.exporter.toSVG(to_export);
+  fs.writeFile(name + ".svg", svg, (_) => {});
 }
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 15.5;
-let arc_threshold = 0.0075;
+let arc_threshold = 0.0065;
 let hull_length_half = hull_length / 2.0;
 let hull_ratio = 1.0 / 10.0;
 let hull_width = hull_length * hull_ratio;
@@ -32,11 +39,16 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 let horizontal_flat = 2.0 / 3.0;
 let hull_depth = 2.25;
 let gunnel_rise = hull_depth / 4.0;
-let slices = 500;
+let slices = 700;
 let segments_drawn = 10;
-let curve_colinearity_tolerance = 0.99;
+let curve_colinearity_tolerance = 0.95;
 let draw_lee = true;
 let draw_wind = true;
+let bulk_heads: number[] = [
+  0.0,
+  hull_length_half/3,
+  2*hull_length_half/3,
+];
 
 let control_points: Point[] = [
   { x: 0.0, y: 1.1 },
@@ -165,30 +177,35 @@ projections[1] = MakerJs.model.move(projections[1], [0, gunnel_rise * 2]);
 let { lee, wind } = boxed_path_hull.draw_flattened_hull(draw_lee, draw_wind);
 let x_offset = hull_length / 7;
 if (draw_lee) {
+  let name = "lee_flat";
+  export_svg(name, lee);
   lee = MakerJs.model.rotate(lee, -90);
   lee = MakerJs.model.mirror(lee, true, true);
   lee = MakerJs.model.move(lee, [
     x_offset + gunnel_rise * 1.05,
     -hull_depth * 1.1,
   ]);
-  model_map["lee_flat"] = lee;
+  model_map[name] = lee;
 }
 if (draw_wind) {
+  let name = "wind_flat";
+  export_svg(name, wind);
   wind = MakerJs.model.rotate(wind, -90);
   wind = MakerJs.model.mirror(wind, false, true);
   wind = MakerJs.model.move(wind, [
     x_offset - gunnel_rise * 1.05,
     -hull_depth * 1.1,
   ]);
-  model_map["wind_flat"] = wind;
+  model_map[name] = wind;
 }
 
-var renderOptions: MakerJs.exporter.ISVGRenderOptions = {
-  strokeWidth: "1.5px",
-  units: MakerJs.unitType.Foot,
-  scale: 1 / 12,
-};
+bulk_heads.forEach((dist, idx) => {
+  let bulk_head = boxed_path_hull.draw_bulkhead(dist);
+  let name = "bulk_head_" + idx;
+  bulk_head = MakerJs.model.rotate(bulk_head, 90);
+  export_svg(name, bulk_head);
+  bulk_head = MakerJs.model.move(bulk_head, [idx * hull_width * 1.1, hull_depth * 2]);
+  model_map[name] = bulk_head;
+});
 
-var svg = MakerJs.exporter.toSVG(model, renderOptions);
-
-fs.writeFile("boxed_hull_controls.svg", svg, (_) => {});
+export_svg("hull_model", model);

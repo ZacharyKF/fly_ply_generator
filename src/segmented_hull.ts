@@ -1,6 +1,6 @@
 import { Bezier, Point } from "bezier-js";
 import { IModel, IModelMap, models } from "makerjs";
-import { floor, pi } from "mathjs";
+import { abs, floor, pi, ResultSetDependencies } from "mathjs";
 import { DrawableHull } from "./boxed_hull_test";
 import { flatten_point, point_to_ipoint } from "./makerjs_tools";
 import { unroll_point_set } from "./math";
@@ -33,12 +33,6 @@ export interface FlattenNode {
   lower_nodes: Point[];
 }
 
-export interface DrawPoints {
-  lines: Point[];
-  starts: Point[];
-  ends: Point[];
-}
-
 export class SegmentedHull implements DrawableHull {
   lee_segments: HullSegment[];
   wind_segments: HullSegment[];
@@ -57,6 +51,43 @@ export class SegmentedHull implements DrawableHull {
     this.wind_curves = wind_curves;
   }
 
+  closest_segments(dist: number): {
+    lee : HullSegment;
+    wind: HullSegment;
+  } {
+    let closest = this.lee_segments.reduce(({seg, idx, d}, new_seg, new_idx) => {
+      let new_d = abs(new_seg.dist - dist);
+      if(new_d < d){
+        return {
+          seg: new_seg,
+          idx: new_idx,
+          d: new_d,
+        }
+      }
+      return {seg, idx, d}
+    }, {seg: this.lee_segments[0], idx: 0, d: abs(this.lee_segments[0].dist - dist)});
+
+    return {
+      lee: closest.seg,
+      wind: this.wind_segments[closest.idx],
+    }
+  }
+
+  draw_bulkhead(dist: number): IModel {
+    
+    let closest_segs = this.closest_segments(dist);
+    let points: Point[] = [];
+
+    for(let i = 0; i < 1.0; i += 0.005) {
+      points.push(closest_segs.lee.hull_curve.get(i));
+      points.unshift(closest_segs.wind.hull_curve.get(i));
+    }
+
+    let ipoints = points.map(p => point_to_ipoint(flatten_point(p, 0)));
+
+    return new models.ConnectTheDots(true, ipoints);
+  }
+
   draw_main_curves(dimm: number): IModel {
     throw new Error("Method not implemented.");
   }
@@ -72,22 +103,18 @@ export class SegmentedHull implements DrawableHull {
 
   flatten_node_to_points(
     node: FlattenNode,
-    draw_arrays: DrawPoints
-  ): DrawPoints {
-    draw_arrays.lines = draw_arrays.lines.concat(node.upper_nodes);
-    draw_arrays.starts.push(node.upper_nodes[0]);
-    draw_arrays.ends.push(node.upper_nodes[node.upper_nodes.length - 1]);
+    draw_arrays: Point[]
+  ): Point[] {
+    let result = draw_arrays.concat(node.upper_nodes);
 
     node.children.forEach((child) => {
-      this.flatten_node_to_points(child, draw_arrays);
+      result = this.flatten_node_to_points(child, result);
     });
 
     let reversed_lower = node.lower_nodes.reverse();
-    draw_arrays.lines = draw_arrays.lines.concat(reversed_lower);
-    draw_arrays.starts.push(reversed_lower[0]);
-    draw_arrays.ends.push(reversed_lower[reversed_lower.length - 1]);
+    result = result.concat(reversed_lower);
 
-    return draw_arrays;
+    return result;
   }
 
   fill_node(
@@ -117,6 +144,11 @@ export class SegmentedHull implements DrawableHull {
           false
         );
 
+        if (i == node.start_seg_idx - 1) {
+          node.upper_nodes.push(flattened.b_flat[flattened.b_flat.length - 1]);
+          node.lower_nodes.push(flattened.b_flat[0]);
+        }
+
         node.upper_nodes.push(flattened.a_flat[flattened.a_flat.length - 1]);
         node.lower_nodes.push(flattened.a_flat[0]);
 
@@ -131,6 +163,11 @@ export class SegmentedHull implements DrawableHull {
           ref_dir_upper,
           true
         );
+
+        if (i == node.start_seg_idx - 1) {
+          node.upper_nodes.push(flattened.b_flat[0]);
+          node.lower_nodes.push(flattened.b_flat[flattened.b_flat.length - 1]);
+        }
 
         node.upper_nodes.push(flattened.a_flat[0]);
         node.lower_nodes.push(flattened.a_flat[flattened.a_flat.length - 1]);
@@ -176,8 +213,6 @@ export class SegmentedHull implements DrawableHull {
         lower_nodes: [],
       };
     };
-    let lee_initial_node = build_initial_node(this.lee_segments);
-    let wind_initial_node = build_initial_node(this.wind_segments);
 
     /**
      * Now for the node insertion, what we do is repetitively take the closest bezier that's within our node's bounds at
@@ -231,7 +266,7 @@ export class SegmentedHull implements DrawableHull {
         let new_dirs = this.fill_node(
           parent_node,
           segments,
-          next_curve.end_seg_idx + 1
+          next_curve.end_seg_idx,
         );
 
         // With the parent node in hand we need to define our curve bound. This lets us find the curve t value at an
@@ -277,51 +312,29 @@ export class SegmentedHull implements DrawableHull {
       nodes_to_consider.forEach((node) => this.fill_node(node, segments, 0));
     };
 
-    populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
-    populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves);
+    let result = {
+      lee: {},
+      wind: {},
+    }
+    if (draw_lee) {
+      let lee_initial_node = build_initial_node(this.lee_segments);
+      populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
+      let lee = this.flatten_node_to_points(lee_initial_node, []);
+      result.lee = {
+        ...new models.ConnectTheDots(true, lee.map(point_to_ipoint)),
+      };
+    }
 
-    // To draw we just need to do a fairly simple recurvive descent, then map the points accordingly
-    let lee = this.flatten_node_to_points(lee_initial_node, {
-      lines: [],
-      starts: [],
-      ends: [],
-    });
-    let wind = this.flatten_node_to_points(wind_initial_node, {
-      lines: [],
-      starts: [],
-      ends: [],
-    });
+    if (draw_wind) {
+      let wind_initial_node = build_initial_node(this.wind_segments);
+      populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves);
+      let wind = this.flatten_node_to_points(wind_initial_node, []);
+      result.wind = {
+        ...new models.ConnectTheDots(true, wind.map(point_to_ipoint)),
+      };
+    }
 
-    return {
-      lee: {
-        layer: LEE_COLOR,
-        ...new models.ConnectTheDots(true, lee.lines.map(point_to_ipoint)),
-        models: {
-          starts: {
-            layer: "green",
-            ...new models.Holes(0.0625, lee.starts.map(point_to_ipoint)),
-          },
-          ends: {
-            layer: "red",
-            ...new models.Holes(0.0625, lee.ends.map(point_to_ipoint)),
-          },
-        },
-      },
-      wind: {
-        layer: WIND_COLOR,
-        ...new models.ConnectTheDots(true, wind.lines.map(point_to_ipoint)),
-        models: {
-          starts: {
-            layer: "green",
-            ...new models.Holes(0.0625, wind.starts.map(point_to_ipoint)),
-          },
-          ends: {
-            layer: "red",
-            ...new models.Holes(0.0625, wind.ends.map(point_to_ipoint)),
-          },
-        },
-      },
-    };
+    return result;
   }
 
   draw_segments(
@@ -340,7 +353,7 @@ export class SegmentedHull implements DrawableHull {
 
     let segment_to_model = (segment: HullSegment): IModel => {
       let points: Point[] = [];
-      for (let i = 0; i < 1.0; i += 0.01) {
+      for (let i = 0; i < 1.0; i += 0.005) {
         points.push(flatten_point(segment.hull_curve.get(i), dimm));
       }
       return new models.ConnectTheDots(false, points.map(point_to_ipoint));
