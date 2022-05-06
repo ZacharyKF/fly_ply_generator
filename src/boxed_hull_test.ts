@@ -16,16 +16,16 @@ export interface DrawableHull {
   draw_flattened_hull(
     lee: boolean,
     wind: boolean,
-    bulkheads: number[],
+    bulkheads: number[]
   ): { lee: IModel; wind: IModel };
-  draw_bulkhead(dist: number) : IModel;
+  draw_bulkhead(dist: number): IModel;
 }
 
 let export_svg = (name: string, model: IModel) => {
   let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 500);
   var svg = MakerJs.exporter.toSVG(to_export);
   fs.writeFile(name + ".svg", svg, (_) => {});
-}
+};
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 15.5;
@@ -40,15 +40,15 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 let horizontal_flat = 2.0 / 3.0;
 let hull_depth = 2.25;
 let gunnel_rise = hull_depth / 4.0;
-let slices = 300;
+let slices = 750;
 let segments_drawn = 10;
 let curve_colinearity_tolerance = 0.95;
 let draw_lee = true;
 let draw_wind = true;
 let bulk_heads: number[] = [
   0.0,
-  hull_length_half/3,
-  2*hull_length_half/3,
+  hull_length_half / 3,
+  (2 * hull_length_half) / 3,
 ];
 
 let control_points: Point[] = [
@@ -175,7 +175,11 @@ projections[0] = MakerJs.model.move(MakerJs.model.rotate(projections[0], 90), [
 ]);
 projections[1] = MakerJs.model.move(projections[1], [0, gunnel_rise * 2]);
 
-let { lee, wind } = boxed_path_hull.draw_flattened_hull(draw_lee, draw_wind, bulk_heads);
+let { lee, wind } = boxed_path_hull.draw_flattened_hull(
+  draw_lee,
+  draw_wind,
+  bulk_heads
+);
 let x_offset = hull_length / 7;
 if (draw_lee) {
   let name = "lee_flat";
@@ -205,7 +209,10 @@ bulk_heads.forEach((dist, idx) => {
   let name = "bulk_head_" + idx;
   bulk_head = MakerJs.model.rotate(bulk_head, 90);
   export_svg(name, bulk_head);
-  bulk_head = MakerJs.model.move(bulk_head, [idx * hull_width * 1.1, hull_depth * 2]);
+  bulk_head = MakerJs.model.move(bulk_head, [
+    idx * hull_width * 1.1,
+    hull_depth * 2,
+  ]);
   model_map[name] = bulk_head;
 });
 

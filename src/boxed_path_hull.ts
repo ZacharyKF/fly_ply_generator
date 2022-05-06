@@ -4,9 +4,11 @@ import { abs, max, min } from "mathjs";
 import { CustomBezier } from "./bezier";
 import { DrawableHull } from "./boxed_hull_test";
 import {
+  colinear_filter,
   flatten_point,
   get_bezier_p_at_dimm_dist,
   get_bezier_t_at_dimm_dist,
+  points_to_imodel,
   point_to_ipoint,
 } from "./makerjs_tools";
 import {
@@ -340,27 +342,7 @@ export class BoxedPathHull implements DrawableHull {
 
       // One more filter step needs to be done. Any sets of 3 points where they are sufficiently co-linear need the
       //  center-point removed
-      let to_remove: number[] = [];
-      do {
-        if (hull.length - to_remove.length <= 2) {
-          break;
-        }
-
-        to_remove.reverse().forEach((idx) => hull.splice(idx, 1));
-        to_remove = [];
-
-        for (let i = 1; i < hull.length - 1; i++) {
-          let vec_a = point_sub(hull[i + 1].p, hull[i].p);
-          let vec_b = point_sub(hull[i - 1].p, hull[i].p);
-          let dot = abs(point_vec_dot(vec_a, vec_b));
-          if (dot < colinearity_tolerance) {
-            to_remove.push(i);
-
-            // skip one to avoid redundant deletion
-            i++;
-          }
-        }
-      } while (to_remove.length > 0);
+      hull = colinear_filter(hull, (val) => val.p, 2, colinearity_tolerance);
 
       curve.owned_offsets = hull.map((hull_point) => {
         return curve.owned_offsets[hull_point.idx];
@@ -391,9 +373,9 @@ export class BoxedPathHull implements DrawableHull {
     let curve_to_model = (curve: Bezier): IModel => {
       let points: Point[] = [];
       for (let i = 0; i <= 1.0; i += 0.0025) {
-        points.push(flatten_point(curve.get(i), dimm));
+        points.push(curve.get(i));
       }
-      return new models.ConnectTheDots(false, points.map(point_to_ipoint));
+      return points_to_imodel(false, points.map(p => flatten_point(p, dimm)));
     };
     let gunnel_lee = curve_to_model(this.gunnel_curve_lee);
     let gunnel_wind = curve_to_model(this.gunnel_curve_wind);

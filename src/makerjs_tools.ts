@@ -1,6 +1,7 @@
 import BezierJs, { Bezier, Point } from "bezier-js";
 import { IModel, IPath, IPathArc, IPoint, models, paths } from "makerjs";
 import { abs, pi, pow, sqrt } from "mathjs";
+import { point_sub, point_vec_dot } from "./math";
 
 export function point_dist(a: Point, b: Point): number {
   let dist_x = a.x - b.x;
@@ -290,6 +291,89 @@ export function flatten_line(
   }
 
   return new models.ConnectTheDots(false, new_line);
+}
+
+export function colinear_filter<T>(
+  datum: T[],
+  get_point: (data: T) => Point,
+  minimum: number,
+  tolerance: number
+): T[] {
+  if (datum.length <= minimum) {
+    return datum;
+  }
+
+  let points: Point[] = datum.map(get_point);
+
+  let to_remove: number[] = [];
+  do {
+    if (points.length - to_remove.length <= minimum) {
+      break;
+    }
+
+    to_remove.reverse().forEach((idx) => {
+      points.splice(idx, 1);
+      datum.splice(idx, 1);
+    });
+    to_remove = [];
+
+    for (let i = 1; i < points.length - 1; i++) {
+      let vec_a = point_sub(points[i + 1], points[i]);
+      let vec_b = point_sub(points[i - 1], points[i]);
+      let dot = abs(point_vec_dot(vec_a, vec_b));
+      if (dot < tolerance) {
+        to_remove.push(i);
+
+        // skip one to avoid redundant deletion
+        i++;
+      }
+    }
+  } while (to_remove.length > 0);
+
+  return datum;
+}
+
+export function colinear_filter_points(
+  datum: Point[],
+  minimum: number,
+  tolerance: number
+): Point[] {
+  if (datum.length <= minimum) {
+    return datum;
+  }
+
+  let to_remove: number[] = [];
+  do {
+    if (datum.length - to_remove.length <= minimum) {
+      break;
+    }
+
+    to_remove.reverse().forEach((idx) => {
+      datum.splice(idx, 1);
+    });
+    to_remove = [];
+
+    for (let i = 1; i < datum.length - 1; i++) {
+      let vec_a = point_sub(datum[i + 1], datum[i]);
+      let vec_b = point_sub(datum[i - 1], datum[i]);
+      let dot = abs(point_vec_dot(vec_a, vec_b));
+      if (dot > tolerance) {
+        to_remove.push(i);
+
+        // skip two to avoid redundant deletion
+        i = i + 2;
+      }
+    }
+  } while (to_remove.length > 0);
+
+  return datum;
+}
+
+export function points_to_imodel(loop: boolean, points: Point[]): IModel {
+  const points_clean: IPoint[] = colinear_filter_points(points, 3, 0.95).map(
+    point_to_ipoint
+  );
+  return new models.ConnectTheDots(loop, points_clean);
 }
 
 const colours: string[] = [

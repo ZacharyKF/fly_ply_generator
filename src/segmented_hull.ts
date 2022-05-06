@@ -1,9 +1,9 @@
 import { Bezier, Point } from "bezier-js";
-import { IModel, IModelMap, models } from "makerjs";
-import { abs, floor, pi, ResultSetDependencies } from "mathjs";
+import { IModel, IModelMap } from "makerjs";
+import { abs, floor, pi } from "mathjs";
 import { DrawableHull } from "./boxed_hull_test";
-import { flatten_point, point_to_ipoint } from "./makerjs_tools";
-import { unroll_point_set } from "./math";
+import { FlattenNode } from "./flatten_node";
+import { flatten_point, points_to_imodel } from "./makerjs_tools";
 import { Curve } from "./wrapped_curve";
 
 const LEE_COLOR = "blue";
@@ -18,19 +18,6 @@ export interface HullCurve {
   start_seg_idx: number;
   end_seg_idx: number;
   curve: Curve;
-}
-
-export interface FlattenNode {
-  start_seg_idx: number;
-  draw_up: boolean;
-  reference_point: Point;
-  ref_dir_upper: number;
-  ref_dir_lower: number;
-  upper_bound: (dist: number) => number;
-  lower_bound: (dist: number) => number;
-  children: FlattenNode[];
-  upper_nodes: Point[];
-  lower_nodes: Point[];
 }
 
 export class SegmentedHull implements DrawableHull {
@@ -51,166 +38,50 @@ export class SegmentedHull implements DrawableHull {
     this.wind_curves = wind_curves;
   }
 
-  closest_segments(dist: number) : number {
-    let closest = this.lee_segments.reduce(({idx, d}, new_seg, new_idx) => {
-      let new_d = abs(new_seg.dist - dist);
-      if(new_d < d){
-        return {
-          idx: new_idx,
-          d: new_d,
+  closest_segments(dist: number): number {
+    let closest = this.lee_segments.reduce(
+      ({ idx, d }, new_seg, new_idx) => {
+        let new_d = abs(new_seg.dist - dist);
+        if (new_d < d) {
+          return {
+            idx: new_idx,
+            d: new_d,
+          };
         }
-      }
-      return { idx, d}
-    }, {idx: 0, d: abs(this.lee_segments[0].dist - dist)});
+        return { idx, d };
+      },
+      { idx: 0, d: abs(this.lee_segments[0].dist - dist) }
+    );
 
     return closest.idx;
   }
 
   draw_bulkhead(dist: number): IModel {
-    
     let closest_seg = this.closest_segments(dist);
-    let points: Point[] = [];
-
-    for(let i = 0; i < 1.0; i += 0.005) {
-      points.push(this.lee_segments[closest_seg].hull_curve.get(i));
-      points.unshift(this.wind_segments[closest_seg].hull_curve.get(i));
-    }
-
-    let ipoints = points.map(p => point_to_ipoint(flatten_point(p, 0)));
-
-    return new models.ConnectTheDots(true, ipoints);
+    let points: Point[] = this.wind_segments[closest_seg].hull_curve
+      .getLUT()
+      .reverse()
+      .concat(this.lee_segments[closest_seg].hull_curve.getLUT());
+    return points_to_imodel(
+      true,
+      points.map((p) => flatten_point(p, 0))
+    );
   }
 
   draw_main_curves(dimm: number): IModel {
     throw new Error("Method not implemented.");
   }
 
-  bound_segment_with_flatten_node(
-    segment: HullSegment,
-    node: FlattenNode
-  ): Bezier {
-    let upper_bound = node.upper_bound(segment.dist);
-    let lower_bound = node.lower_bound(segment.dist);
-    return segment.hull_curve.split(lower_bound, upper_bound);
-  }
-
-  flatten_node_to_points(
-    node: FlattenNode,
-    draw_arrays: Point[]
-  ): Point[] {
-    let result = draw_arrays.concat(node.upper_nodes);
-
-    node.children.forEach((child) => {
-      result = this.flatten_node_to_points(child, result);
-    });
-
-    let reversed_lower = node.lower_nodes.reverse();
-    result = result.concat(reversed_lower);
-
-    return result;
-  }
-
-  fill_node(
-    node: FlattenNode,
-    segments: HullSegment[],
-    idx_end: number,
-    bulkheads: Set<number>,
-  ): {
-    ref_dir_upper: number;
-    ref_dir_lower: number;
-    bulkhead_lines: Point[][];
-  } {
-    let bulkhead_lines: Point[][] = [];
-    let reference = node.reference_point;
-    let ref_dir_upper = node.ref_dir_upper;
-    let ref_dir_lower = node.ref_dir_lower;
-    let prev_seg = segments[node.start_seg_idx];
-    let bezier_b = this.bound_segment_with_flatten_node(prev_seg, node);
-
-    for (let i = node.start_seg_idx - 1; i >= idx_end; i--) {
-      let segment = segments[i];
-      let bezier_a = this.bound_segment_with_flatten_node(segment, node);
-
-      if (node.draw_up) {
-        let flattened = unroll_point_set(
-          bezier_a.getLUT(),
-          bezier_b.getLUT(),
-          reference,
-          ref_dir_lower,
-          false
-        );
-
-        if (i == node.start_seg_idx - 1) {
-          node.upper_nodes.push(flattened.b_flat[flattened.b_flat.length - 1]);
-          node.lower_nodes.push(flattened.b_flat[0]);
-
-          if(bulkheads.has(node.start_seg_idx)) {
-            bulkhead_lines.push(flattened.b_flat);
-          }
-        }
-
-        node.upper_nodes.push(flattened.a_flat[flattened.a_flat.length - 1]);
-        node.lower_nodes.push(flattened.a_flat[0]);
-
-        if(bulkheads.has(i)) {
-          bulkhead_lines.push(flattened.a_flat);
-        }
-
-        reference = flattened.a_flat[0];
-        ref_dir_lower = flattened.f1f4_dir;
-        ref_dir_upper = flattened.fnfn_less1_dir;
-      } else if (!node.draw_up) {
-        let flattened = unroll_point_set(
-          bezier_a.getLUT().reverse(),
-          bezier_b.getLUT().reverse(),
-          reference,
-          ref_dir_upper,
-          true
-        );
-
-        if (i == node.start_seg_idx - 1) {
-          node.upper_nodes.push(flattened.b_flat[0]);
-          node.lower_nodes.push(flattened.b_flat[flattened.b_flat.length - 1]);
-
-          if(bulkheads.has(node.start_seg_idx)) {
-            bulkhead_lines.push(flattened.b_flat);
-          }
-        }
-
-        node.upper_nodes.push(flattened.a_flat[0]);
-        node.lower_nodes.push(flattened.a_flat[flattened.a_flat.length - 1]);
-
-        if(bulkheads.has(i)) {
-          bulkhead_lines.push(flattened.a_flat);
-        }
-
-        reference = flattened.a_flat[0];
-        ref_dir_lower = flattened.fnfn_less1_dir;
-        ref_dir_upper = flattened.f1f4_dir;
-      }
-
-      prev_seg = segment;
-      bezier_b = bezier_a;
-    }
-
-    return {
-      ref_dir_upper,
-      ref_dir_lower,
-      bulkhead_lines,
-    };
-  }
-
   draw_flattened_hull(
     draw_lee: boolean,
     draw_wind: boolean,
-    bulkheads: number[],
+    bulkheads: number[]
   ): { lee: IModel; wind: IModel } {
-
     /**
      * We need a set of segments to use for generating bulkheads
      */
     let bulk_head_segs: Set<number> = new Set();
-    bulkheads.forEach(d => {
+    bulkheads.forEach((d) => {
       bulk_head_segs.add(this.closest_segments(d));
     });
 
@@ -223,18 +94,15 @@ export class SegmentedHull implements DrawableHull {
      * For consistency, nodes closer to the stern will be drawn TOWARDS THE NEGATIVE X DIRECTION
      */
     let build_initial_node = (segments: HullSegment[]): FlattenNode => {
-      return {
-        start_seg_idx: segments.length - 1,
-        draw_up: false,
-        reference_point: { x: 0, y: 0 },
-        ref_dir_upper: (3.0 * pi) / 2.0,
-        ref_dir_lower: pi / 2.0,
-        upper_bound: (dist: number) => 1.0,
-        lower_bound: (dist: number) => 0.0,
-        children: [],
-        upper_nodes: [],
-        lower_nodes: [],
-      };
+      return new FlattenNode(
+        segments.length - 1,
+        false,
+        { x: 0, y: 0 },
+        (3.0 * pi) / 2.0,
+        pi / 2.0,
+        (_) => 1.0,
+        (_) => 0.0
+      );
     };
 
     /**
@@ -246,10 +114,7 @@ export class SegmentedHull implements DrawableHull {
       initial_node: FlattenNode,
       segments: HullSegment[],
       curves: HullCurve[]
-    ): Point[][] => {
-
-      let bulkhead_lines: Point[][] = [];
-
+    ) => {
       // We want to process the curves in order from closes to bow back
       let bezier_sort = (a: HullCurve, b: HullCurve) => {
         return b.end_seg_idx - a.end_seg_idx;
@@ -289,13 +154,11 @@ export class SegmentedHull implements DrawableHull {
         try_index = 0;
 
         // This may seem counter intuitive, but it's just saying "the parent stops where it meets the curve"
-        let new_dirs = this.fill_node(
-          parent_node,
+        let new_dirs = parent_node.fill(
           segments,
           next_curve.end_seg_idx,
-          bulk_head_segs,
+          bulk_head_segs
         );
-        bulkhead_lines = bulkhead_lines.concat(new_dirs.bulkhead_lines);
 
         // With the parent node in hand we need to define our curve bound. This lets us find the curve t value at an
         //  arbitrary point along the hull
@@ -304,76 +167,77 @@ export class SegmentedHull implements DrawableHull {
 
         // Keep track of how the direction is flipping, the end of one node is the start of another (until the leaf
         //  nodes, which ACTUALLY end at 0)
-        let new_upper: FlattenNode = {
-          start_seg_idx: next_curve.end_seg_idx,
-          draw_up: false,
-          reference_point:
-            parent_node.upper_nodes[parent_node.upper_nodes.length - 1],
-          ref_dir_upper: new_dirs.ref_dir_upper,
-          ref_dir_lower: 0, // Won't actually be used
-          upper_bound: parent_node.upper_bound,
-          lower_bound: curve_bound,
-          children: [],
-          upper_nodes: [],
-          lower_nodes: [],
-        };
+        let new_upper = new FlattenNode(
+          next_curve.end_seg_idx,
+          false,
+          parent_node.upper_nodes[parent_node.upper_nodes.length - 1],
+          new_dirs.ref_dir_upper,
+          0, // Won't actually be used
+          parent_node.upper_bound,
+          curve_bound
+        );
         parent_node.children.push(new_upper);
         nodes_to_consider.push(new_upper);
 
-        let new_lower: FlattenNode = {
-          start_seg_idx: next_curve.end_seg_idx,
-          draw_up: true,
-          reference_point:
-            parent_node.lower_nodes[parent_node.lower_nodes.length - 1],
-          ref_dir_upper: 0, // Won't actually be used
-          ref_dir_lower: new_dirs.ref_dir_lower,
-          upper_bound: curve_bound,
-          lower_bound: parent_node.lower_bound,
-          children: [],
-          upper_nodes: [],
-          lower_nodes: [],
-        };
+        let new_lower = new FlattenNode(
+          next_curve.end_seg_idx,
+          true,
+          parent_node.lower_nodes[parent_node.lower_nodes.length - 1],
+          0, // Won't actually be used
+          new_dirs.ref_dir_lower,
+          curve_bound,
+          parent_node.lower_bound
+        );
         parent_node.children.push(new_lower);
         nodes_to_consider.push(new_lower);
       }
 
       nodes_to_consider.forEach((node) => {
-        bulkhead_lines = bulkhead_lines.concat(this.fill_node(node, segments, 0, bulk_head_segs).bulkhead_lines);
+        node.fill(segments, 0, bulk_head_segs);
       });
-
-      return bulkhead_lines;
     };
 
     let result = {
       lee: {},
       wind: {},
-    }
+    };
+
     if (draw_lee) {
       let lee_initial_node = build_initial_node(this.lee_segments);
       let lee_model_map: IModelMap = {};
-      populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves).forEach((line, idx) => {
-        lee_model_map["bulkhead_" + idx] = {
-          layer: "blue",
-          ...new models.ConnectTheDots(false, line.map(point_to_ipoint)),
-        }
+      populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
+
+      lee_initial_node.as_list().forEach((node, idx) => {
+        node.bulkheads.forEach((line, l_idx) => {
+          lee_model_map["bulkhead_" + idx + "_" + l_idx] = {
+            layer: "blue",
+            ...points_to_imodel(false, line),
+          };
+        });
       });
-      let lee = this.flatten_node_to_points(lee_initial_node, []);
-      lee_model_map["outline"] = new models.ConnectTheDots(true, lee.map(point_to_ipoint));
-      result.lee = {models: lee_model_map};
+
+      let lee = lee_initial_node.to_continuous_points([]);
+      lee_model_map["outline"] = points_to_imodel(false, lee);
+      result.lee = { models: lee_model_map };
     }
 
     if (draw_wind) {
       let wind_initial_node = build_initial_node(this.wind_segments);
       let wind_model_map: IModelMap = {};
-      populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves).forEach((line, idx) => {
-        wind_model_map["bulkhead_" + idx] = {
-          layer: "blue",
-          ...new models.ConnectTheDots(false, line.map(point_to_ipoint)),
-        }
+      populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves);
+
+      wind_initial_node.as_list().forEach((node, idx) => {
+        node.bulkheads.forEach((line, l_idx) => {
+          wind_model_map["bulkhead_" + idx + "_" + l_idx] = {
+            layer: "blue",
+            ...points_to_imodel(false, line),
+          };
+        });
       });
-      let wind = this.flatten_node_to_points(wind_initial_node, []);
-      wind_model_map["outline"] = new models.ConnectTheDots(true, wind.map(point_to_ipoint));
-      result.wind = {models: wind_model_map};
+
+      let wind = wind_initial_node.to_continuous_points([]);
+      (wind_model_map["outline"] = points_to_imodel(false, wind)),
+        (result.wind = { models: wind_model_map });
     }
 
     return result;
@@ -394,11 +258,10 @@ export class SegmentedHull implements DrawableHull {
     };
 
     let segment_to_model = (segment: HullSegment): IModel => {
-      let points: Point[] = [];
-      for (let i = 0; i < 1.0; i += 0.005) {
-        points.push(flatten_point(segment.hull_curve.get(i), dimm));
-      }
-      return new models.ConnectTheDots(false, points.map(point_to_ipoint));
+      return points_to_imodel(
+        false,
+        segment.hull_curve.getLUT().map((p) => flatten_point(p, dimm))
+      );
     };
 
     let add_to_modelmap = (
@@ -448,13 +311,11 @@ export class SegmentedHull implements DrawableHull {
       for (let i = hull_curve.start_seg_idx; i <= hull_curve.end_seg_idx; i++) {
         let segment = segments[i];
         let t = hull_curve.curve.get_at_dimm_dist(0, segment.dist);
-        let point_3d = segment.hull_curve.get(t.y);
-        let point_2d = flatten_point(point_3d, dimm);
-        points_to_draw.push(point_2d);
+        points_to_draw.push(segment.hull_curve.get(t.y));
       }
-      return new models.ConnectTheDots(
+      return points_to_imodel(
         false,
-        points_to_draw.map(point_to_ipoint)
+        points_to_draw.map((p) => flatten_point(p, dimm))
       );
     };
 
