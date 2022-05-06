@@ -93,15 +93,18 @@ export class SegmentedHull implements DrawableHull {
      *
      * For consistency, nodes closer to the stern will be drawn TOWARDS THE NEGATIVE X DIRECTION
      */
-    let build_initial_node = (segments: HullSegment[]): FlattenNode => {
+    let build_initial_node = (prefix: string, segments: HullSegment[]): FlattenNode => {
       return new FlattenNode(
+        prefix,
+        0,
+        0,
         segments.length - 1,
         false,
         { x: 0, y: 0 },
         (3.0 * pi) / 2.0,
         pi / 2.0,
         (_) => 1.0,
-        (_) => 0.0
+        (_) => 0.0,
       );
     };
 
@@ -157,6 +160,7 @@ export class SegmentedHull implements DrawableHull {
         let new_dirs = parent_node.fill(
           segments,
           next_curve.end_seg_idx,
+          bezier_end_t,
           bulk_head_segs
         );
 
@@ -168,32 +172,38 @@ export class SegmentedHull implements DrawableHull {
         // Keep track of how the direction is flipping, the end of one node is the start of another (until the leaf
         //  nodes, which ACTUALLY end at 0)
         let new_upper = new FlattenNode(
+          parent_node.prefix,
+          parent_node.depth + 1,
+          parent_node.children.length,
           next_curve.end_seg_idx,
           false,
           parent_node.upper_nodes[parent_node.upper_nodes.length - 1],
           new_dirs.ref_dir_upper,
           0, // Won't actually be used
           parent_node.upper_bound,
-          curve_bound
+          curve_bound,
         );
         parent_node.children.push(new_upper);
         nodes_to_consider.push(new_upper);
 
         let new_lower = new FlattenNode(
+          parent_node.prefix,
+          parent_node.depth + 1,
+          parent_node.children.length,
           next_curve.end_seg_idx,
           true,
           parent_node.lower_nodes[parent_node.lower_nodes.length - 1],
           0, // Won't actually be used
           new_dirs.ref_dir_lower,
           curve_bound,
-          parent_node.lower_bound
+          parent_node.lower_bound,
         );
         parent_node.children.push(new_lower);
         nodes_to_consider.push(new_lower);
       }
 
       nodes_to_consider.forEach((node) => {
-        node.fill(segments, 0, bulk_head_segs);
+        node.fill(segments, 0, 5.0, bulk_head_segs);
       });
     };
 
@@ -203,7 +213,7 @@ export class SegmentedHull implements DrawableHull {
     };
 
     if (draw_lee) {
-      let lee_initial_node = build_initial_node(this.lee_segments);
+      let lee_initial_node = build_initial_node("LEE", this.lee_segments);
       let lee_model_map: IModelMap = {};
       populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
 
@@ -214,15 +224,16 @@ export class SegmentedHull implements DrawableHull {
             ...points_to_imodel(false, line),
           };
         });
+        lee_model_map["outline_"+idx] = node.draw_node();
       });
 
-      let lee = lee_initial_node.to_continuous_points([]);
-      lee_model_map["outline"] = points_to_imodel(false, lee);
+      // let lee = lee_initial_node.to_continuous_points([]);
+      // lee_model_map["outline"] = points_to_imodel(false, lee);
       result.lee = { models: lee_model_map };
     }
 
     if (draw_wind) {
-      let wind_initial_node = build_initial_node(this.wind_segments);
+      let wind_initial_node = build_initial_node("WIND", this.wind_segments);
       let wind_model_map: IModelMap = {};
       populate_nodes(wind_initial_node, this.wind_segments, this.wind_curves);
 
@@ -233,10 +244,11 @@ export class SegmentedHull implements DrawableHull {
             ...points_to_imodel(false, line),
           };
         });
+        wind_model_map["outline_"+idx] = node.draw_node();
       });
 
-      let wind = wind_initial_node.to_continuous_points([]);
-      (wind_model_map["outline"] = points_to_imodel(false, wind)),
+      // let wind = wind_initial_node.to_continuous_points([]);
+      // (wind_model_map["outline"] = points_to_imodel(false, wind)),
         (result.wind = { models: wind_model_map });
     }
 

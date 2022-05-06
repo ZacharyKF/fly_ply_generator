@@ -2,6 +2,7 @@ import { Bezier, Point } from "bezier-js";
 import { IPoint } from "makerjs";
 import {
   abs,
+  floor,
   inv,
   Matrix,
   matrix,
@@ -524,9 +525,14 @@ export function unroll_point_set(
    * a    b
    */
 
+  let start_i = 0;
+  let inc_i = 1;
+  let end_i = a.length - 1;
+
   if (reverse_points) {
-    a = a.reverse();
-    b = b.reverse();
+    start_i = a.length - 1;
+    inc_i = -1;
+    end_i = 0;
   }
 
   // Our arrays to populate
@@ -534,14 +540,14 @@ export function unroll_point_set(
   let b_flat: Point[] = [];
 
   // Initial points
-  let p1 = a[0];
-  let p2 = b[0];
+  let p1 = a[start_i];
+  let p2 = b[start_i];
 
   // Calculate f2, this is a pretty similar operation to the loop body
   let f2 = f2_init;
   let f1 = { x: 0, y: 0 };
   {
-    let p3 = b[1];
+    let p3 = b[start_i + inc_i];
     let t2 = point_dot_a(p2, p3, p1);
     let d12 = point_dist(p1, p2);
 
@@ -555,7 +561,7 @@ export function unroll_point_set(
   a_flat.push(f1);
   b_flat.push(f2);
 
-  for (let i = 1; i < a.length; i++) {
+  for (let i = start_i + inc_i; i != end_i + inc_i; i += inc_i) {
     let p4 = a[i];
     let p3 = b[i];
 
@@ -595,4 +601,116 @@ export function unroll_point_set(
     f1f4_dir,
     fnfn_less1_dir,
   };
+}
+
+export function center_of_endpoints(points: Point[]): Point {
+    return point_mul(0.5, point_add(points[0], points[points.length - 1]))
+}
+
+export function middle_value<T>(points: T[]) : T {
+    return points[floor(points.length/2)];
+}
+
+export function unroll_unflat_flat(
+  a: Point[],
+  b: Point[],
+  b_flat: Point[],
+  reverse_points: boolean,
+  clockwise: boolean
+): UnrollResult {
+  /**
+   * CLOCKWISE
+   * a    b
+   * 1    2
+   *
+   * 4    3
+   *
+   * - f2f3_ang refers to the initial direction of f2 -> f3
+   * - clockwise refers to the rotational direction between f2f3_ang & vf2f1, the case above is the true case
+   *
+   * The return reference dir is the direction between f1 & f4 of the first quad
+   *
+   * COUNTER-CLOCKWISE
+   *
+   * 4    3
+   *
+   * 1    2
+   * a    b
+   */
+
+   let start_i = 0;
+   let inc_i = 1;
+   let end_i = a.length - 1;
+ 
+   if (reverse_points) {
+     start_i = a.length - 1;
+     inc_i = -1;
+     end_i = 0;
+   }
+ 
+   // Our arrays to populate
+   let a_flat: Point[] = [];
+ 
+   // Our
+   // Initial points
+   let p1 = a[start_i];
+   let p2 = b[start_i];
+ 
+   // Calculate f2, this is a pretty similar operation to the loop body
+   let f2 = b_flat[0];
+   let f2f3_ang = circle_angle_bezierjs(f2, b_flat[1]);
+   let f1 = { x: 0, y: 0 };
+   {
+     let p3 = b[start_i + inc_i];
+     let t2 = point_dot_a(p2, p3, p1);
+     let d12 = point_dist(p1, p2);
+ 
+     if (clockwise) {
+       f1 = circle_point_bezierjs(f2, d12, f2f3_ang - t2);
+     } else {
+       f1 = circle_point_bezierjs(f2, d12, f2f3_ang + t2);
+     }
+   }
+ 
+   a_flat.push(f1);
+ 
+   for (let i = start_i + inc_i, j = 1; i != end_i + inc_i; i += inc_i, j++) {
+     let p4 = a[i];
+     let p3 = b[i];
+ 
+     let txf1 = circle_angle_bezierjs(f1, f2);
+     let txf2 = circle_angle_bezierjs(f2, f1);
+ 
+     let t1 = point_dot_a(p1, p2, p4);
+     let t2 = point_dot_a(p2, p1, p3);
+ 
+     let d14 = point_dist(p1, p4);
+     let d23 = point_dist(p2, p3);
+ 
+     if (clockwise) {
+       f1 = circle_point_bezierjs(f1, d14, txf1 - t1);
+       f2 = circle_point_bezierjs(f2, d23, txf2 + t2);
+     } else {
+       f1 = circle_point_bezierjs(f1, d14, txf1 + t1);
+       f2 = circle_point_bezierjs(f2, d23, txf2 - t2);
+     }
+ 
+     a_flat.push(f1);
+ 
+     p1 = p4;
+     p2 = p3;
+   }
+ 
+   let f1f4_dir = circle_angle_bezierjs(a_flat[0], a_flat[1]);
+   let fnfn_less1_dir = circle_angle_bezierjs(
+     a_flat[a_flat.length - 1],
+     a_flat[a_flat.length - 2]
+   );
+ 
+   return {
+     a_flat,
+     b_flat,
+     f1f4_dir,
+     fnfn_less1_dir,
+   };
 }

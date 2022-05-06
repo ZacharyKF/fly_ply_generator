@@ -22,7 +22,7 @@ export interface DrawableHull {
 }
 
 let export_svg = (name: string, model: IModel) => {
-  let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 500);
+  let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 400);
   var svg = MakerJs.exporter.toSVG(to_export);
   fs.writeFile(name + ".svg", svg, (_) => {});
 };
