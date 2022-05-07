@@ -1,8 +1,15 @@
 import { Point } from "bezier-js";
 import * as fs from "fs";
-import MakerJs, { IModel, IModelMap } from "makerjs";
+import MakerJs, { IModel, IModelMap, exporter, } from "makerjs";
 import { pi, tan } from "mathjs";
 import { BoxedPathHull } from "./boxed_path_hull";
+
+export interface FlattenResult {
+  lee: IModel;
+  wind: IModel;
+  lee_panels: IModel[];
+  wind_panels: IModel[];
+}
 
 export interface DrawableHull {
   draw_main_curves(dimm: number): IModel;
@@ -16,18 +23,16 @@ export interface DrawableHull {
   draw_flattened_hull(
     lee: boolean,
     wind: boolean,
-    bulkheads: number[]
-  ): { lee: IModel; wind: IModel };
+    puzzle_tooth_width: number,
+    puzzle_tooth_angle: number,
+    bulkheads: number[],
+  ): FlattenResult;
   draw_bulkhead(dist: number): IModel;
 }
 
-let export_svg = (name: string, model: IModel) => {
-  let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 400);
-  var svg = MakerJs.exporter.toSVG(to_export);
-  fs.writeFile(name + ".svg", svg, (_) => {});
-};
 
 // Measurements for Aka, all in feet, degrees, or unitless
+let scale_up = 500;
 let hull_length = 15.5;
 let arc_threshold = 0.0075;
 let hull_length_half = hull_length / 2.0;
@@ -43,6 +48,8 @@ let gunnel_rise = hull_depth / 4.0;
 let slices = 750;
 let segments_drawn = 10;
 let curve_colinearity_tolerance = 0.95;
+let puzzle_tooth_width = hull_depth/30
+let puzzle_tooth_angle = (7.5 * pi)/ 180;
 let draw_lee = true;
 let draw_wind = true;
 let bulk_heads: number[] = [
@@ -126,6 +133,13 @@ let bilge_points: Point[] = [
   meeting_point,
 ];
 
+let export_svg = (name: string, model: IModel) => {
+  let to_export = MakerJs.model.scale(MakerJs.model.clone(model), scale_up);
+ 
+  var svg = exporter.toSVG(to_export);
+  fs.writeFile(name + ".svg", svg, (_) => {});
+};
+
 let boxed_path_hull = new BoxedPathHull(
   gunnel_points_lee,
   gunnel_points_wind,
@@ -175,9 +189,11 @@ projections[0] = MakerJs.model.move(MakerJs.model.rotate(projections[0], 90), [
 ]);
 projections[1] = MakerJs.model.move(projections[1], [0, gunnel_rise * 2]);
 
-let { lee, wind } = boxed_path_hull.draw_flattened_hull(
+let { lee, wind, lee_panels, wind_panels } = boxed_path_hull.draw_flattened_hull(
   draw_lee,
   draw_wind,
+  puzzle_tooth_width,
+  puzzle_tooth_angle,
   bulk_heads
 );
 let x_offset = hull_length / 7;
@@ -191,6 +207,10 @@ if (draw_lee) {
     -hull_depth * 1.1,
   ]);
   model_map[name] = lee;
+
+  lee_panels.forEach((panel, idx) => {
+    export_svg("lee_panel_" + idx, panel);
+  });
 }
 if (draw_wind) {
   let name = "wind_flat";
@@ -202,6 +222,10 @@ if (draw_wind) {
     -hull_depth * 1.1,
   ]);
   model_map[name] = wind;
+
+  wind_panels.forEach((panel, idx) => {
+    export_svg("wind_panel_" + idx, panel);
+  });
 }
 
 bulk_heads.forEach((dist, idx) => {

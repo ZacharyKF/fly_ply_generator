@@ -2,7 +2,7 @@ import { Bezier, Point } from "bezier-js";
 import MakerJs, { IModel, models } from "makerjs";
 import { abs, max, min } from "mathjs";
 import { CustomBezier } from "./bezier";
-import { DrawableHull } from "./boxed_hull_test";
+import { DrawableHull, FlattenResult } from "./boxed_hull_test";
 import {
   colinear_filter,
   flatten_point,
@@ -146,9 +146,11 @@ export class BoxedPathHull implements DrawableHull {
   draw_flattened_hull(
     lee: boolean,
     wind: boolean,
+    puzzle_tooth_width: number,
+    puzzle_tooth_angle: number,
     bulkheads: number[],
-  ): { lee: IModel; wind: IModel } {
-    return this.hull_internal.draw_flattened_hull(lee, wind, bulkheads);
+  ): FlattenResult {
+    return this.hull_internal.draw_flattened_hull(lee, wind, puzzle_tooth_width, puzzle_tooth_angle, bulkheads);
   }
 
   static hull_at_d(

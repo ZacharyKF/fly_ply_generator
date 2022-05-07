@@ -1,7 +1,7 @@
 import { Bezier, Point } from "bezier-js";
 import { IModel, IModelMap } from "makerjs";
 import { abs, floor, pi } from "mathjs";
-import { DrawableHull } from "./boxed_hull_test";
+import { DrawableHull, FlattenResult } from "./boxed_hull_test";
 import { FlattenNode } from "./flatten_node";
 import { flatten_point, points_to_imodel } from "./makerjs_tools";
 import { Curve } from "./wrapped_curve";
@@ -75,8 +75,10 @@ export class SegmentedHull implements DrawableHull {
   draw_flattened_hull(
     draw_lee: boolean,
     draw_wind: boolean,
+    puzzle_tooth_width: number,
+    puzzle_tooth_angle: number,
     bulkheads: number[]
-  ): { lee: IModel; wind: IModel } {
+  ): FlattenResult {
     /**
      * We need a set of segments to use for generating bulkheads
      */
@@ -93,7 +95,10 @@ export class SegmentedHull implements DrawableHull {
      *
      * For consistency, nodes closer to the stern will be drawn TOWARDS THE NEGATIVE X DIRECTION
      */
-    let build_initial_node = (prefix: string, segments: HullSegment[]): FlattenNode => {
+    let build_initial_node = (
+      prefix: string,
+      segments: HullSegment[]
+    ): FlattenNode => {
       return new FlattenNode(
         prefix,
         0,
@@ -104,7 +109,7 @@ export class SegmentedHull implements DrawableHull {
         (3.0 * pi) / 2.0,
         pi / 2.0,
         (_) => 1.0,
-        (_) => 0.0,
+        (_) => 0.0
       );
     };
 
@@ -160,7 +165,8 @@ export class SegmentedHull implements DrawableHull {
         let new_dirs = parent_node.fill(
           segments,
           next_curve.end_seg_idx,
-          bezier_end_t,
+          puzzle_tooth_width,
+          puzzle_tooth_angle,
           bulk_head_segs
         );
 
@@ -181,7 +187,7 @@ export class SegmentedHull implements DrawableHull {
           new_dirs.ref_dir_upper,
           0, // Won't actually be used
           parent_node.upper_bound,
-          curve_bound,
+          curve_bound
         );
         parent_node.children.push(new_upper);
         nodes_to_consider.push(new_upper);
@@ -196,25 +202,34 @@ export class SegmentedHull implements DrawableHull {
           0, // Won't actually be used
           new_dirs.ref_dir_lower,
           curve_bound,
-          parent_node.lower_bound,
+          parent_node.lower_bound
         );
         parent_node.children.push(new_lower);
         nodes_to_consider.push(new_lower);
       }
 
       nodes_to_consider.forEach((node) => {
-        node.fill(segments, 0, 5.0, bulk_head_segs);
+        node.fill(
+          segments,
+          0,
+          puzzle_tooth_width,
+          puzzle_tooth_angle,
+          bulk_head_segs
+        );
       });
     };
 
-    let result = {
+    let result: FlattenResult = {
       lee: {},
       wind: {},
+      lee_panels: [],
+      wind_panels: [],
     };
 
     if (draw_lee) {
       let lee_initial_node = build_initial_node("LEE", this.lee_segments);
       let lee_model_map: IModelMap = {};
+      let lee_panels: IModel[] = [];
       populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
 
       lee_initial_node.as_list().forEach((node, idx) => {
@@ -224,11 +239,11 @@ export class SegmentedHull implements DrawableHull {
             ...points_to_imodel(false, line),
           };
         });
-        lee_model_map["outline_"+idx] = node.draw_node();
+        result.lee_panels.push(node.draw_node());
       });
 
-      // let lee = lee_initial_node.to_continuous_points([]);
-      // lee_model_map["outline"] = points_to_imodel(false, lee);
+      let lee = lee_initial_node.to_continuous_points([]);
+      lee_model_map["outline"] = points_to_imodel(false, lee);
       result.lee = { models: lee_model_map };
     }
 
@@ -244,11 +259,11 @@ export class SegmentedHull implements DrawableHull {
             ...points_to_imodel(false, line),
           };
         });
-        wind_model_map["outline_"+idx] = node.draw_node();
+        result.wind_panels.push(node.draw_node());
       });
 
-      // let wind = wind_initial_node.to_continuous_points([]);
-      // (wind_model_map["outline"] = points_to_imodel(false, wind)),
+      let wind = wind_initial_node.to_continuous_points([]);
+      (wind_model_map["outline"] = points_to_imodel(false, wind)),
         (result.wind = { models: wind_model_map });
     }
 

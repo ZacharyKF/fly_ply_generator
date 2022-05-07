@@ -1,6 +1,6 @@
 import { Bezier, Point } from "bezier-js";
 import { IModel, model, models, paths } from "makerjs";
-import { points_to_imodel, point_to_ipoint } from "./makerjs_tools";
+import { points_to_imodel, point_path_to_puzzle_teeth, point_to_ipoint } from "./makerjs_tools";
 import {
   center_of_endpoints,
   middle_value,
@@ -141,7 +141,8 @@ export class FlattenNode {
   fill(
     segments: HullSegment[],
     idx_end: number,
-    end_t: number,
+    puzzle_tooth_width: number,
+    puzzle_tooth_angle: number,
     bulkheads: Set<number>
   ): FillResult {
     let bezier_b = this.bound_segment_with_flatten_node(
@@ -160,7 +161,7 @@ export class FlattenNode {
       !this.draw_up
     );
 
-    this.start = flattened.b_flat;
+    this.start = point_path_to_puzzle_teeth(flattened.b_flat, puzzle_tooth_width, puzzle_tooth_angle);
 
     this.append_segment(flattened.b_flat, this.start_seg_idx, bulkheads);
     this.append_segment(flattened.a_flat, this.start_seg_idx - 1, bulkheads);
