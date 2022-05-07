@@ -1,9 +1,14 @@
 import { Bezier, Point } from "bezier-js";
-import { IModel, IModelMap } from "makerjs";
+import { IModel, IModelMap, model } from "makerjs";
 import { abs, floor, pi } from "mathjs";
 import { DrawableHull, FlattenResult } from "./boxed_hull_test";
 import { FlattenNode } from "./flatten_node";
-import { flatten_point, points_to_imodel } from "./makerjs_tools";
+import {
+  flatten_point,
+  points_to_imodel,
+  point_to_ipoint,
+} from "./makerjs_tools";
+import { center_of_endpoints, middle_value } from "./math";
 import { Curve } from "./wrapped_curve";
 
 const LEE_COLOR = "blue";
@@ -56,16 +61,26 @@ export class SegmentedHull implements DrawableHull {
     return closest.idx;
   }
 
-  draw_bulkhead(dist: number): IModel {
+  draw_bulkhead(dist: number, idx: number): IModel {
     let closest_seg = this.closest_segments(dist);
-    let points: Point[] = this.wind_segments[closest_seg].hull_curve
+    let wind_points = this.wind_segments[closest_seg].hull_curve
       .getLUT()
       .reverse()
-      .concat(this.lee_segments[closest_seg].hull_curve.getLUT());
-    return points_to_imodel(
+      .map((p) => flatten_point(p, 0));
+    let lee_points = this.lee_segments[closest_seg].hull_curve
+      .getLUT()
+      .map((p) => flatten_point(p, 0));
+
+    let bulkhead: IModel = points_to_imodel(
       true,
-      points.map((p) => flatten_point(p, 0))
+      wind_points.concat(lee_points)
     );
+    let caption_point = point_to_ipoint(
+      center_of_endpoints([middle_value(wind_points), middle_value(lee_points)])
+    );
+    model.addCaption(bulkhead, "BULKHEAD, " + idx, caption_point, caption_point)
+
+    return bulkhead;
   }
 
   draw_main_curves(dimm: number): IModel {
@@ -229,21 +244,20 @@ export class SegmentedHull implements DrawableHull {
     if (draw_lee) {
       let lee_initial_node = build_initial_node("LEE", this.lee_segments);
       let lee_model_map: IModelMap = {};
-      let lee_panels: IModel[] = [];
       populate_nodes(lee_initial_node, this.lee_segments, this.lee_curves);
 
       lee_initial_node.as_list().forEach((node, idx) => {
         node.bulkheads.forEach((line, l_idx) => {
           lee_model_map["bulkhead_" + idx + "_" + l_idx] = {
             layer: "blue",
-            ...points_to_imodel(false, line),
+            ...points_to_imodel(true, line),
           };
         });
         result.lee_panels.push(node.draw_node());
       });
 
       let lee = lee_initial_node.to_continuous_points([]);
-      lee_model_map["outline"] = points_to_imodel(false, lee);
+      lee_model_map["outline"] = points_to_imodel(true, lee);
       result.lee = { models: lee_model_map };
     }
 
@@ -256,14 +270,14 @@ export class SegmentedHull implements DrawableHull {
         node.bulkheads.forEach((line, l_idx) => {
           wind_model_map["bulkhead_" + idx + "_" + l_idx] = {
             layer: "blue",
-            ...points_to_imodel(false, line),
+            ...points_to_imodel(true, line),
           };
         });
         result.wind_panels.push(node.draw_node());
       });
 
       let wind = wind_initial_node.to_continuous_points([]);
-      (wind_model_map["outline"] = points_to_imodel(false, wind)),
+      (wind_model_map["outline"] = points_to_imodel(true, wind)),
         (result.wind = { models: wind_model_map });
     }
 

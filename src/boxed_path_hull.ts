@@ -129,8 +129,8 @@ export class BoxedPathHull implements DrawableHull {
     this.tumblehome_curve = tumblehome_curve;
     this.hull_internal = hull_internal;
   }
-  draw_bulkhead(dist: number): MakerJs.IModel {
-    return this.hull_internal.draw_bulkhead(dist);
+  draw_bulkhead(dist: number, idx: number): MakerJs.IModel {
+    return this.hull_internal.draw_bulkhead(dist, idx);
   }
   draw_hull_curves(dimm: number, lee: boolean, wind: boolean): MakerJs.IModel {
     return this.hull_internal.draw_hull_curves(dimm, lee, wind);

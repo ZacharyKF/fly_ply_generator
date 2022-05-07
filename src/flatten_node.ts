@@ -1,5 +1,5 @@
 import { Bezier, Point } from "bezier-js";
-import { IModel, model, models, paths } from "makerjs";
+import { IModel, IModelMap, model, models, paths } from "makerjs";
 import { points_to_imodel, point_path_to_puzzle_teeth, point_to_ipoint } from "./makerjs_tools";
 import {
   center_of_endpoints,
@@ -28,7 +28,6 @@ export class FlattenNode {
   upper_nodes: Point[];
   lower_nodes: Point[];
   bulkheads: Point[][];
-  debug_points: [];
 
   constructor(
     prefix: string,
@@ -57,7 +56,6 @@ export class FlattenNode {
     this.lower_nodes = [];
     this.bulkheads = [];
     this.start = [];
-    this.debug_points = [];
   }
 
   draw_node(): IModel {
@@ -79,11 +77,16 @@ export class FlattenNode {
       to_draw.push(...[...this.start].reverse());
     }
 
+    let bulkheads: IModelMap = {};
+    this.bulkheads.forEach((bulkhead, idx) => {
+      let model = points_to_imodel(false, bulkhead);
+      model.layer = "blue";
+      bulkheads["bulkhead_" + idx] = model;
+    });
+
     let box: IModel = {
       ...points_to_imodel(false, to_draw),
-      models: {
-        debug: { layer: "red", ...new models.Holes(0.0625, this.debug_points.map(point_to_ipoint))},
-      },
+      models: bulkheads,
     };
 
     let caption_point = point_to_ipoint(

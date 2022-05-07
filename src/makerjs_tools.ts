@@ -370,7 +370,7 @@ export function colinear_filter_points(
 }
 
 export function points_to_imodel(loop: boolean, points: Point[]): IModel {
-  const points_clean: IPoint[] = colinear_filter_points(points, 3, 0.90).map(
+  const points_clean: IPoint[] = colinear_filter_points(points, 3, 0.95).map(
     point_to_ipoint
   );
   return new models.ConnectTheDots(loop, points_clean);
