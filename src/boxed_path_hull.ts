@@ -364,7 +364,7 @@ export class BoxedPathHull implements DrawableHull {
         start_seg_idx: curve.owned_offsets[0].seg_idx,
         end_seg_idx:
           curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx,
-        curve: new CustomBezier(t_points),
+        curve: CustomBezier.fit_to_points(t_points, 2),
       };
     });
 

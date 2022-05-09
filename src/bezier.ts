@@ -1,13 +1,18 @@
 import { Point } from "bezier-js";
 import { IModel } from "makerjs";
-import { abs, inv, matrix, Matrix, max, min, multiply, transpose } from "mathjs";
+import { abs, cos, inv, matrix, Matrix, max, min, multiply, sin, transpose } from "mathjs";
+import { Interval } from "./boxed_path_hull";
 import { flatten_point, points_to_imodel, point_dist } from "./makerjs_tools";
 import {
+  angle,
   average_point,
   binomial,
   point_add,
+  point_dot_a,
   point_mul,
   point_sub,
+  Arc,
+  getccenter,
 } from "./math";
 import { Curve, WrappedCurve } from "./wrapped_curve";
 
@@ -614,5 +619,122 @@ export class CustomBezier extends WrappedCurve {
     }
 
     return new_controls;
+  }
+
+  arcs(threshold: number) : Arc[] {
+    
+    let intervals: Arc[] = [];
+    let t_s = 0,
+    t_e = 1,
+    safety;
+  // we do a binary search to find the "good `t` closest to no-longer-good"
+  do {
+    safety = 0;
+
+    // step 1: start with the maximum possible arc
+    t_e = 1;
+
+    // points:
+    let np1 = this.get(t_s);
+    let np2 = np1;
+    let np3 = np1;
+    let arc: Arc | undefined = undefined;
+    let prev_arc: Arc | undefined = undefined;
+
+    // booleans:
+    let curr_good = false;
+    let prev_good = false;
+    let done = false;
+
+    // numbers:
+    let t_m = t_e,
+      prev_e = 1,
+      step = 0;
+
+    // step 2: find the best possible arc
+    do {
+      prev_good = curr_good;
+      prev_arc = arc ? arc : undefined;
+      t_m = (t_s + t_e) / 2;
+      step++;
+
+      np2 = this.get(t_m);
+      np3 = this.get(t_e);
+
+      arc = getccenter(np1, np2, np3);
+
+      if (arc == undefined) {
+        arc = {
+          ...np2,
+          start: 0,
+          end: 0,
+          radius: 0,
+          interval: {
+            start: t_s,
+            end: t_e,
+          }
+        }
+      } else {
+        //also save the t values
+        arc.interval = {
+          start: t_s,
+          end: t_e,
+        };
+      };
+
+
+      let error = this.error(arc, np1, t_s, t_e);
+      curr_good = error <= threshold;
+
+      done = prev_good && !curr_good;
+      if (!done) prev_e = t_e;
+
+      // this arc is fine: we can move 'e' up to see if we can find a wider arc
+      if (curr_good) {
+        // if e is already at max, then we're done for this arc.
+        if (t_e >= 1) {
+          // make sure we cap at t=1
+          arc.interval.end = prev_e = 1;
+          prev_arc = arc;
+          // if we capped the arc segment to t=1 we also need to make sure that
+          // the arc's end angle is correct with respect to the bezier end point.
+          if (t_e > 1) {
+            let d = {
+              x: arc.x + arc.radius * cos(arc.end),
+              y: arc.y + arc.radius * sin(arc.end),
+            };
+            arc.end += angle({ x: arc.x, y: arc.y }, d, this.get(1));
+          }
+          break;
+        }
+        // if not, move it up by half the iteration distance
+        t_e = t_e + (t_e - t_s) / 2;
+      } else {
+        // this is a bad arc: we need to move 'e' down to find a good arc
+        t_e = t_m;
+      }
+    } while (!done && safety++ < 100);
+
+    if (safety >= 100) {
+      break;
+    }
+
+    // console.log("L835: [F] arc found", t_s, prev_e, prev_arc.x, prev_arc.y, prev_arc.s, prev_arc.e);
+
+    prev_arc = prev_arc ? prev_arc : arc;
+    intervals.push(prev_arc);
+    t_s = prev_e;
+  } while (t_e < 1);
+  return intervals;
+  } 
+
+  error(pc : Point, np1: Point, s: number, e: number) {
+    const q = (e - s) / 4,
+      c1 = this.get(s + q),
+      c2 = this.get(e - q),
+      ref = point_dist(pc, np1),
+      d1 = point_dist(pc, c1),
+      d2 = point_dist(pc, c2);
+    return abs(d1 - ref) + abs(d2 - ref);
   }
 }

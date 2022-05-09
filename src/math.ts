@@ -2,6 +2,8 @@ import { Bezier, Point } from "bezier-js";
 import { IPoint } from "makerjs";
 import {
   abs,
+  atan2,
+  cos,
   floor,
   inv,
   Matrix,
@@ -9,9 +11,12 @@ import {
   max,
   min,
   multiply,
+  pi,
+  sin,
   sqrt,
   transpose,
 } from "mathjs";
+import { Interval } from "./boxed_path_hull";
 import { point_dist } from "./makerjs_tools";
 
 export function pythag_h_a(h: number, a: number): number {
@@ -586,11 +591,11 @@ export function unroll_point_set(
 }
 
 export function center_of_endpoints(points: Point[]): Point {
-    return point_mul(0.5, point_add(points[0], points[points.length - 1]))
+  return point_mul(0.5, point_add(points[0], points[points.length - 1]));
 }
 
-export function middle_value<T>(points: T[]) : T {
-    return points[floor(points.length/2)];
+export function middle_value<T>(points: T[]): T {
+  return points[floor(points.length / 2)];
 }
 
 export function unroll_unflat_flat(
@@ -620,79 +625,188 @@ export function unroll_unflat_flat(
    * a    b
    */
 
-   let start_i = 0;
-   let inc_i = 1;
-   let end_i = a.length - 1;
- 
-   if (reverse_points) {
-     start_i = a.length - 1;
-     inc_i = -1;
-     end_i = 0;
-   }
- 
-   // Our arrays to populate
-   let a_flat: Point[] = [];
- 
-   // Our
-   // Initial points
-   let p1 = a[start_i];
-   let p2 = b[start_i];
- 
-   // Calculate f2, this is a pretty similar operation to the loop body
-   let f2 = b_flat[0];
-   let f2f3_ang = circle_angle_bezierjs(f2, b_flat[1]);
-   let f1 = { x: 0, y: 0 };
-   {
-     let p3 = b[start_i + inc_i];
-     let t2 = point_dot_a(p2, p3, p1);
-     let d12 = point_dist(p1, p2);
- 
-     if (clockwise) {
-       f1 = circle_point_bezierjs(f2, d12, f2f3_ang - t2);
-     } else {
-       f1 = circle_point_bezierjs(f2, d12, f2f3_ang + t2);
-     }
-   }
- 
-   a_flat.push(f1);
- 
-   for (let i = start_i + inc_i, j = 1; i != end_i + inc_i; i += inc_i, j++) {
-     let p4 = a[i];
-     let p3 = b[i];
- 
-     let txf1 = circle_angle_bezierjs(f1, f2);
-     let txf2 = circle_angle_bezierjs(f2, f1);
- 
-     let t1 = point_dot_a(p1, p2, p4);
-     let t2 = point_dot_a(p2, p1, p3);
- 
-     let d14 = point_dist(p1, p4);
-     let d23 = point_dist(p2, p3);
- 
-     if (clockwise) {
-       f1 = circle_point_bezierjs(f1, d14, txf1 - t1);
-       f2 = circle_point_bezierjs(f2, d23, txf2 + t2);
-     } else {
-       f1 = circle_point_bezierjs(f1, d14, txf1 + t1);
-       f2 = circle_point_bezierjs(f2, d23, txf2 - t2);
-     }
- 
-     a_flat.push(f1);
- 
-     p1 = p4;
-     p2 = p3;
-   }
- 
-   let f1f4_dir = circle_angle_bezierjs(a_flat[0], a_flat[1]);
-   let fnfn_less1_dir = circle_angle_bezierjs(
-     a_flat[a_flat.length - 1],
-     a_flat[a_flat.length - 2]
-   );
- 
-   return {
-     a_flat,
-     b_flat,
-     f1f4_dir,
-     fnfn_less1_dir,
-   };
+  let start_i = 0;
+  let inc_i = 1;
+  let end_i = a.length - 1;
+
+  if (reverse_points) {
+    start_i = a.length - 1;
+    inc_i = -1;
+    end_i = 0;
+  }
+
+  // Our arrays to populate
+  let a_flat: Point[] = [];
+
+  // Our
+  // Initial points
+  let p1 = a[start_i];
+  let p2 = b[start_i];
+
+  // Calculate f2, this is a pretty similar operation to the loop body
+  let f2 = b_flat[0];
+  let f2f3_ang = circle_angle_bezierjs(f2, b_flat[1]);
+  let f1 = { x: 0, y: 0 };
+  {
+    let p3 = b[start_i + inc_i];
+    let t2 = point_dot_a(p2, p3, p1);
+    let d12 = point_dist(p1, p2);
+
+    if (clockwise) {
+      f1 = circle_point_bezierjs(f2, d12, f2f3_ang - t2);
+    } else {
+      f1 = circle_point_bezierjs(f2, d12, f2f3_ang + t2);
+    }
+  }
+
+  a_flat.push(f1);
+
+  for (let i = start_i + inc_i, j = 1; i != end_i + inc_i; i += inc_i, j++) {
+    let p4 = a[i];
+    let p3 = b[i];
+
+    let txf1 = circle_angle_bezierjs(f1, f2);
+    let txf2 = circle_angle_bezierjs(f2, f1);
+
+    let t1 = point_dot_a(p1, p2, p4);
+    let t2 = point_dot_a(p2, p1, p3);
+
+    let d14 = point_dist(p1, p4);
+    let d23 = point_dist(p2, p3);
+
+    if (clockwise) {
+      f1 = circle_point_bezierjs(f1, d14, txf1 - t1);
+      f2 = circle_point_bezierjs(f2, d23, txf2 + t2);
+    } else {
+      f1 = circle_point_bezierjs(f1, d14, txf1 + t1);
+      f2 = circle_point_bezierjs(f2, d23, txf2 - t2);
+    }
+
+    a_flat.push(f1);
+
+    p1 = p4;
+    p2 = p3;
+  }
+
+  let f1f4_dir = circle_angle_bezierjs(a_flat[0], a_flat[1]);
+  let fnfn_less1_dir = circle_angle_bezierjs(
+    a_flat[a_flat.length - 1],
+    a_flat[a_flat.length - 2]
+  );
+
+  return {
+    a_flat,
+    b_flat,
+    f1f4_dir,
+    fnfn_less1_dir,
+  };
 }
+
+const quart = pi / 2;
+const tau = 2 * pi;
+
+export function lli8(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  x3: number,
+  y3: number,
+  x4: number,
+  y4: number
+): Point | undefined {
+  const nx = (x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4);
+  const ny = (x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4);
+  const d = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+  if (d == 0) {
+    return undefined;
+  }
+  return { x: nx / d, y: ny / d };
+}
+
+export function getccenter(p1: Point, p2: Point, p3: Point): Arc | undefined {
+  const dx1 = p2.x - p1.x;
+  const dy1 = p2.y - p1.y;
+  const dx2 = p3.x - p2.x;
+  const dy2 = p3.y - p2.y;
+  const dx1p = dx1 * cos(quart) - dy1 * sin(quart);
+  const dy1p = dx1 * sin(quart) + dy1 * cos(quart);
+  const dx2p = dx2 * cos(quart) - dy2 * sin(quart);
+  const dy2p = dx2 * sin(quart) + dy2 * cos(quart);
+  // chord midpoints
+  const mx1 = (p1.x + p2.x) / 2;
+  const my1 = (p1.y + p2.y) / 2;
+  const mx2 = (p2.x + p3.x) / 2;
+  const my2 = (p2.y + p3.y) / 2;
+  // midpoint offsets
+  const mx1n = mx1 + dx1p;
+  const my1n = my1 + dy1p;
+  const mx2n = mx2 + dx2p;
+  const my2n = my2 + dy2p;
+  // intersection of these lines:
+  const center = lli8(mx1, my1, mx1n, my1n, mx2, my2, mx2n, my2n);
+
+    if (center == undefined) {
+      return undefined;
+    }
+
+    let radius = point_dist(center, p1);
+
+  // arc start/end values, over mid point:
+  let start = atan2(p1.y - center.y, p1.x - center.x);
+  let middle = atan2(p2.y - center.y, p2.x - center.x);
+  let end = atan2(p3.y - center.y, p3.x - center.x);
+  let _;
+
+  // determine arc direction (cw/ccw correction)
+  if (start < end) {
+    // if s<m<e, arc(s, e)
+    // if m<s<e, arc(e, s + tau)
+    // if s<e<m, arc(e, s + tau)
+    if (start > middle || middle > end) {
+      start += tau;
+    }
+    if (start > end) {
+      _ = end;
+      end = start;
+      start = _;
+    }
+  } else {
+    // if e<m<s, arc(e, s)
+    // if m<e<s, arc(s, e + tau)
+    // if e<s<m, arc(s, e + tau)
+    if (end < middle && middle < start) {
+      _ = end;
+      end = start;
+      start = _;
+    } else {
+      end += tau;
+    }
+  }
+  // assign and done.
+  return {
+    x: center.x,
+    y: center.y,
+    start,
+    end,
+    radius,
+    interval: {start: 0, end: 0},
+  };
+}
+
+export interface Arc extends Point {
+  start: number,
+  end: number,
+  radius: number,
+  interval: Interval,
+}
+
+export function angle (o:Point, v1: Point, v2:Point): number {
+  const dx1 = v1.x - o.x,
+    dy1 = v1.y - o.y,
+    dx2 = v2.x - o.x,
+    dy2 = v2.y - o.y,
+    cross = dx1 * dy2 - dy1 * dx2,
+    dot = dx1 * dx2 + dy1 * dy2;
+  return atan2(cross, dot);
+};
