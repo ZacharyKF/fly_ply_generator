@@ -1,6 +1,7 @@
 import { Point } from "bezier-js";
-import { abs, inv, matrix, Matrix, multiply, transpose } from "mathjs";
-import { point_dist } from "./makerjs_tools";
+import { IModel } from "makerjs";
+import { abs, inv, matrix, Matrix, max, min, multiply, transpose } from "mathjs";
+import { flatten_point, points_to_imodel, point_dist } from "./makerjs_tools";
 import {
   average_point,
   binomial,
@@ -12,49 +13,159 @@ import { Curve, WrappedCurve } from "./wrapped_curve";
 
 export class CustomBezier extends WrappedCurve {
 
-  split(t_lower: number, t_upper: number): Curve {
-      let t_step = (t_upper - t_lower)/3;
-      let new_controls: Point[] = [];
-      for(let i = t_lower; i <= t_upper; i += t_step){
-          new_controls.push(this.get(i));
-      }
-      return new CustomBezier(new_controls);
+  draw(dimm: number): IModel {
+    return points_to_imodel(false, this.lut.map(l => flatten_point(l.p, dimm)));
   }
 
-  controls: Point[];
+  get_strut_points(t: number): Point[][] {
+
+    const mt = 1 - t;
+
+    // run de Casteljau's algorithm, starting with the base points
+    const points = [...this.controls];
+    let results = [this.controls];
+
+    let s = 0;
+    let n = points.length + 1;
+
+    // Every iteration will interpolate between `n` points,
+    // as well as decrease that `n` by one. So 4 points yield
+    // 3 new points, which yield 2 new points, which yields 1
+    // final point that is our on-curve point for `t`
+    while (--n > 1) {
+      let list = points.slice(s, s + n);
+      let level = [];
+      for (let i = 0, e = list.length - 1; i < e; i++) {
+        let pt = point_sub(
+          list[i + 1],
+          point_mul(
+            mt,
+            point_sub(
+              list[i + 1],
+              list[i]
+            )
+          )
+        );
+
+        points.push(pt);
+        level.push(pt);
+      }
+      results.push(level);
+      s += n;
+    }
+
+    return results;
+  }
+
+  split(t_split: number): {
+    upper: CustomBezier,
+    lower: CustomBezier,
+  } {
+
+    let left: Point[] = [];
+    let right: Point[] = [];
+    
+    let recursive_split = (points: Point[], t: number) => {
+
+      if(points.length == 1){
+  
+        left.push(points[0])
+        right.unshift(points[0])
+      
+      } else {
+      
+        left.push(points[0]);
+        right.unshift(points[points.length - 1]);
+        let newpoints: Point[] = [];
+
+        for(let i = 0; i < points.length - 1; i++){
+          newpoints.push(
+            point_add(
+              point_mul((1 - t), points[i]),
+              point_mul(t, points[i+1]),
+            )
+          );
+        }
+        recursive_split(newpoints, t)
+      }
+    }
+
+    recursive_split(this.controls, t_split);
+
+    return {
+      upper: new CustomBezier(right),
+      lower: new CustomBezier(left),
+    }
+  }
+
+  // We're going to solve this numerically
+  split_segment(t_lower: number, t_upper: number): CustomBezier {
+
+    let t_up = max(t_lower, t_upper);
+    let t_down = min(t_lower, t_upper);
+    
+    if (t_down <= 0 && t_up >= 1) {
+      return this;
+    }
+
+    if (t_down <= 0) {
+      return this.split(t_up).lower;
+    }
+
+    if (t_up >= 1) {
+      return this.split(t_down).upper;
+    }
+
+    let curve_upper = this.split(t_down).upper;
+    let p_split_next = this.get(t_up);
+    let t_split_next = curve_upper.get_t_closest(p_split_next);
+    let curve_final = curve_upper.split(t_split_next).lower;
+    return curve_final;
+  }
+
+  public controls: Point[];
 
   constructor(points: Point[]) {
     super();
-    this.controls = CustomBezier.fit_controls(points);
-    this.controls = this.reduce_order(this.controls, 3);
+    this.controls = points;
     this.populate_lut();
   }
 
+  static fit_to_points(points: Point[], order: number) : CustomBezier {
+    let controls = CustomBezier.fit_controls(points);
+    controls = CustomBezier.reduce_order(controls, order);
+    return new CustomBezier(controls);
+  }
+
   get(t: number): Point {
-    let n = this.controls.length - 1;
+    return CustomBezier.get(this.controls, t);
+  }
+
+  static get(controls: Point[], t: number): Point {
+    let n = controls.length - 1;
     if (t <= 0.5) {
       let u = t / (1 - t);
       let b = 1;
-      let result = this.controls[n];
+      let result = controls[n];
       for (let k = n - 1; k >= 0; --k) {
         b *= k + 1;
         b /= n - k;
         result = point_add(
           point_mul(u, result),
-          point_mul(b, this.controls[k])
+          point_mul(b, controls[k])
         );
       }
       return point_mul((1 - t) ** n, result);
     } else {
       let u = (1 - t) / t;
       let b = 1;
-      let result = this.controls[0];
+      let result = controls[0];
       for (let k = 1; k <= n; ++k) {
         b *= n - k + 1;
         b /= k;
         result = point_add(
           point_mul(u, result),
-          point_mul(b, this.controls[k])
+          point_mul(b, controls[k])
         );
       }
       return point_mul(t ** n, result);
@@ -154,7 +265,7 @@ export class CustomBezier extends WrappedCurve {
     return { T, Tt };
   }
 
-  reduce_order(controls: Point[], order: number): Point[] {
+  static reduce_order(controls: Point[], order: number): Point[] {
     if (controls.length - 1 <= order) {
       return controls;
     }
@@ -339,7 +450,7 @@ export class CustomBezier extends WrappedCurve {
     // We now compute values y[i] = v(x[i]), i = 0, 1, ..., m - k - l
     // and to save up memory, we store then in array W: new_controls[k + i] = y[i].
 
-    for (let i = 0; i <= m - k - l; ++i) new_controls[k + i] = this.get(x[i]);
+    for (let i = 0; i <= m - k - l; ++i) new_controls[k + i] = CustomBezier.get(controls, x[i]);
 
     // Compute auxiliary values d[i], i = 0, 1, ..., m - k - l defined
     // by recurrence relation

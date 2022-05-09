@@ -1,16 +1,15 @@
 import { Bezier, Point } from "bezier-js";
 import { IModel, IModelMap, model, models, paths } from "makerjs";
+import { CustomBezier } from "./bezier";
 import { points_to_imodel, point_path_to_puzzle_teeth, point_to_ipoint } from "./makerjs_tools";
 import {
   center_of_endpoints,
   middle_value,
-  point_add,
-  point_mul,
-  UnrollResult,
   unroll_point_set,
   unroll_unflat_flat,
 } from "./math";
 import { HullSegment } from "./segmented_hull";
+import { Curve } from "./wrapped_curve";
 
 export class FlattenNode {
   prefix: string;

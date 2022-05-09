@@ -254,24 +254,6 @@ export function project(a: IPoint, b: IPoint): IPoint {
   return [proj * b[0], proj * b[1]];
 }
 
-export function bezier_length(bezier: Bezier, t1: number, t2: number): number {
-  if (!bezier._3d) {
-    return bezier.split(t1, t2).length();
-  }
-
-  let t_max = max(t1, t2);
-  let t_min = min(t1, t2);
-  let dist = 0;
-  let t_step = (t_max - t_min) / 1000;
-  let prev_point = bezier.get(t_min);
-  for (let i = t_min + t_step; i <= t_max; i += t_step) {
-    let new_point = bezier.get(i);
-    dist = dist + point_dist(prev_point, new_point);
-    prev_point = new_point;
-  }
-  return dist;
-}
-
 export function average_point(a: Point, b: Point): Point {
   let x = (a.x + b.x) / 2;
   let y = (a.y + b.y) / 2;
@@ -437,7 +419,7 @@ export function point_add(a: Point, b: Point): Point {
     return {
       x: a.x + b.x,
       y: a.y + b.y,
-      z: a.z + b.y,
+      z: a.z + b.z,
     };
   }
   return {
@@ -451,7 +433,7 @@ export function point_sub(a: Point, b: Point): Point {
     return {
       x: a.x - b.x,
       y: a.y - b.y,
-      z: a.z - b.y,
+      z: a.z - b.z,
     };
   }
   return {
@@ -465,7 +447,7 @@ export function point_sub_abs(a: Point, b: Point): Point {
     return {
       x: abs(a.x - b.x),
       y: abs(a.y - b.y),
-      z: abs(a.z - b.y),
+      z: abs(a.z - b.z),
     };
   }
   return {
@@ -479,7 +461,7 @@ export function point_mul(a: number, b: Point): Point {
     return {
       x: a * b.x,
       y: a * b.y,
-      z: a * b.y,
+      z: a * b.z,
     };
   }
   return {

@@ -6,10 +6,10 @@ import { apply_vector_mul, as_unit, circle_angle, circle_angle_bezierjs, circle_
 export function point_dist(a: Point, b: Point): number {
   let dist_x = a.x - b.x;
   let dist_y = a.y - b.y;
-  let dist_sqr = dist_x * dist_x + dist_y * dist_y;
+  let dist_sqr = (dist_x * dist_x) + (dist_y * dist_y);
   if (a.z != undefined && b.z != undefined) {
     let dist_z = a.z - b.z;
-    dist_sqr = dist_sqr + dist_z * dist_z;
+    dist_sqr = dist_sqr + (dist_z * dist_z);
   }
   return sqrt(dist_sqr);
 }
@@ -61,8 +61,8 @@ export function flatten_point(point: Point, dimension: number): Point {
     switch (dimension) {
       case 0:
         return {
-          x: point.y,
-          y: point.z,
+          x: point.z,
+          y: point.y,
         };
       case 1:
         return {

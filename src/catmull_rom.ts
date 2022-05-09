@@ -1,6 +1,6 @@
 import { Point } from "bezier-js";
-import { abs, floor, max, min, number } from "mathjs";
-import { point_add, point_mul, point_sub, point_sub_abs } from "./math";
+import { floor } from "mathjs";
+import { point_add, point_mul, point_sub } from "./math";
 import { Curve, WrappedCurve } from "./wrapped_curve";
 
 interface CatMulSegment {
@@ -11,14 +11,47 @@ interface CatMulSegment {
 }
 
 export class CatmullRom extends WrappedCurve {
+  split(t_split: number): {
+    upper: Curve;
+    lower: Curve;
+  } {
+    let points_upper: Point[] = [];
+    let points_lower: Point[] = [];
 
-  split(t_lower: number, t_upper: number): Curve {
-      let t_step = (t_upper - t_lower)/3;
-      let new_controls: Point[] = [];
-      for(let i = t_lower - t_step; i <= t_upper + t_step; i += t_step){
-          new_controls.push(this.get(i));
+    for (let i = 0; i < this.lut.length; i++) {
+      let p_upper = this.lut[this.lut.length - i - 1];
+      let p_lower = this.lut[i];
+
+      points_upper.push(p_upper.p);
+      points_lower.push(p_lower.p);
+
+      if (p_upper.t < t_split && p_lower.t > t_split) {
+        break;
       }
-      return new CatmullRom(new_controls, this.tension, false);
+    }
+
+    return {
+      upper: new CatmullRom(points_upper, this.tension, false),
+      lower: new CatmullRom(points_lower, this.tension, false),
+    };
+  }
+
+  split_segment(t_lower: number, t_upper: number): Curve {
+    let points_segment: Point[] = [];
+
+    for(let i = 1; i < this.lut.length; i++){
+
+      if (this.lut[i].t > t_lower) {
+        points_segment.push(this.lut[i - 1].p);
+      }
+
+      if (this.lut[i].t > t_upper) {
+        points_segment.push(this.lut[i].p);
+        points_segment.push(this.lut[i + 1].p);
+      }
+    }
+
+    return new CatmullRom(points_segment, this.tension, false);
   }
 
   public segments: CatMulSegment[];

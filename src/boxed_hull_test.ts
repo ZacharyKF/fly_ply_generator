@@ -1,6 +1,6 @@
 import { Point } from "bezier-js";
 import * as fs from "fs";
-import MakerJs, { IModel, IModelMap, exporter, } from "makerjs";
+import MakerJs, { IModel, IModelMap, exporter } from "makerjs";
 import { pi, tan } from "mathjs";
 import { BoxedPathHull } from "./boxed_path_hull";
 
@@ -25,11 +25,10 @@ export interface DrawableHull {
     wind: boolean,
     puzzle_tooth_width: number,
     puzzle_tooth_angle: number,
-    bulkheads: number[],
+    bulkheads: number[]
   ): FlattenResult;
   draw_bulkhead(dist: number, idx: number): IModel;
 }
-
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let scale_up = 100;
@@ -48,8 +47,8 @@ let gunnel_rise = hull_depth / 4.0;
 let slices = 750;
 let segments_drawn = 10;
 let curve_colinearity_tolerance = 0.95;
-let puzzle_tooth_width = hull_depth/30
-let puzzle_tooth_angle = (10 * pi)/ 180;
+let puzzle_tooth_width = hull_depth / 30;
+let puzzle_tooth_angle = (10 * pi) / 180;
 let draw_lee = true;
 let draw_wind = true;
 let bulk_heads: number[] = [
@@ -182,19 +181,17 @@ for (let i = 0; i < 3; i++) {
   );
 }
 
-projections[0] = MakerJs.model.move(MakerJs.model.rotate(projections[0], 90), [
-  -hull_width,
-  0,
-]);
+projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
 projections[1] = MakerJs.model.move(projections[1], [0, gunnel_rise * 2]);
 
-let { lee, wind, lee_panels, wind_panels } = boxed_path_hull.draw_flattened_hull(
-  draw_lee,
-  draw_wind,
-  puzzle_tooth_width,
-  puzzle_tooth_angle,
-  bulk_heads
-);
+let { lee, wind, lee_panels, wind_panels } =
+  boxed_path_hull.draw_flattened_hull(
+    draw_lee,
+    draw_wind,
+    puzzle_tooth_width,
+    puzzle_tooth_angle,
+    bulk_heads
+  );
 
 let x_offset = hull_length / 7;
 
@@ -232,7 +229,6 @@ if (draw_wind) {
 bulk_heads.forEach((dist, idx) => {
   let bulk_head = boxed_path_hull.draw_bulkhead(dist, idx);
   let name = "bulk_head_" + idx;
-  bulk_head = MakerJs.model.rotate(bulk_head, 90);
   export_svg(name, bulk_head);
   bulk_head.caption = undefined;
   bulk_head = MakerJs.model.move(bulk_head, [
