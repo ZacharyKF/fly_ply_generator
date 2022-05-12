@@ -41,20 +41,20 @@ let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
-let variance_threshold = 0.4;
+let variance_threshold = 0.4225;
 let max_segments = 5;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;
-let hull_ratio = 1.0 / 10.5;
+let hull_ratio = 1.0 / 11.25;
 let hull_width = hull_length * hull_ratio;
 let bow_rake = 17.5;
 let asymmetry_wind = 4 / 7;
-let gunnel_jump = 8 / 14;
+let gunnel_jump = 7.5 / 14;
 let horizontal_flat = 9 / 14;
-let vertical_flat = 18 / 35;
-let lee_cut_depth = 19.5 / 35;
-let lee_cut_width = 1/5;
+let vertical_flat = 19 / 35;
+let lee_cut_depth = 21 / 35;
+let lee_cut_width = 1/7;
 let hull_depth = -2.25;
 let gunnel_rise = 0.5;
 let curve_colinearity_tolerance = 0.95;
@@ -68,10 +68,10 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 lee_cut_width = lee_cut_width * asymmetry_lee;
 
 let weights: number[][] = [
-  [1, 2, 1.75], // bilge curve
-  [2, 1], // lee special
+  [1, 2.25, 1.75], // bilge curve
+  [2.75, 0.75], // lee special
   [2.75, 1.75], // side default
-  [0.75, 1.25, 1, 0.25], // gunnel
+  [0.625, 1.125, 1, 0.25], // gunnel
 ];
 
 let bulk_heads: number[] = [
