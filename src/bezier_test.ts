@@ -11,7 +11,7 @@ import { color_naturally } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
 import { Point } from "./rational_point";
 
-let variance_tolerance = 0.0000015;
+let variance_tolerance = 8;
 
 let points: Point[] = [
     new Point(0, 0, 10, 1),

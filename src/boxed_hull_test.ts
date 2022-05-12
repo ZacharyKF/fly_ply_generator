@@ -37,12 +37,12 @@ let scale_up = 100;
 let slices = 250;
 let segments_drawn = 250;
 let lee_draw = true;
-let wind_draw = false;
+let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
-let variance_threshold = 0.000815;
-let max_segments = 3;
+let variance_threshold = 0.2;
+let max_segments = 5;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;

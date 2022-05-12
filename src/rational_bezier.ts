@@ -1,5 +1,5 @@
 import { IModel, models } from "makerjs";
-import { abs, floor, max, min } from "mathjs";
+import { abs, floor, max, min, sqrt } from "mathjs";
 import { binomial } from "./math";
 import { Point } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
@@ -301,7 +301,8 @@ export class RationalBezier {
 
         // We'll build our segments from these eventually
         let divisors: number[];
-        let variance_max = 0;
+        let total_error = 0;
+        let segments: RationalSegment[] = [];
 
         do {
             // Initializing the divisors
@@ -322,66 +323,71 @@ export class RationalBezier {
                 for (let i = 1; i < divisors.length - 1; i++) {
                     let low = divisors[i - 1] - 1;
                     let mid = divisors[i];
-                    let high = divisors[i + 1]
+                    let high = divisors[i + 1];
 
-                    let curr_variance = this.calc_variance(mid, low);
-                    let next_variance = this.calc_variance(high, mid);
+                    let left_center = this.calc_center(mid, low);
+                    let right_center = this.calc_center(high, mid);
 
-                    let if_left_curr = this.calc_variance(mid - 1, low);
-                    let if_left_next = this.calc_variance(high, mid - 1);
-
-                    if (if_left_curr < curr_variance && if_left_next < next_variance) {
+                    let dist_curr_left = this.calc_dist(mid, left_center);
+                    let dist_curr_right = this.calc_dist(mid, right_center);
+                    
+                    if (dist_curr_right < dist_curr_left) {
                         divisors[i]--;
                         changed = true;
                         continue;
                     }
+                    
+                    let dist_next_left = this.calc_dist(mid + 1, left_center);
+                    let dist_next_right = this.calc_dist(mid + 1, right_center);
 
-                    let if_right_curr = this.calc_variance(mid + 1, low);
-                    let if_right_next = this.calc_variance(high, mid + 1);
-
-                    if (if_right_curr < curr_variance && if_right_next < next_variance) {
+                    if (dist_next_left < dist_next_right) {
                         divisors[i]++;
                         changed = true;
-                    }                    
+                        continue;
+                    }
                 }
             } while (changed);
 
-            // Find our maximum variance
-            variance_max = 0;
-            for (let i = 1; i < divisors.length; i++) {
-                variance_max = max(
-                    variance_max,
-                    this.calc_variance(
-                        divisors[i],
-                        divisors[i - 1] - 1,
-                    )
-                );
-            }
-
-            // Move our first and last divisors to cover the whole line
             divisors[0] = 0;
             divisors[divisors.length - 1] = this.lut.length - 1;
 
+            
+            total_error = 0;
+            segments = [];
+            for (let i = 0; i < divisors.length - 1; i++) {
+                let new_seg = new RationalSegment(this, divisors[i], divisors[i + 1]);
+                total_error += new_seg.error;
+                segments.push(new_seg);
+            }
             // Iterate our number of segments so that if we need to go again we
             //  add more segments to decrease the variance
         } while (
-            variance_max > variance_tolerance &&
+            total_error > variance_tolerance &&
             num_segs++ < max_segments
         );
 
-        let segments = [];
-        for (let i = 0; i < divisors.length - 1; i++) {
-            segments.push(
-                new RationalSegment(this, divisors[i], divisors[i + 1])
-            );
-        }
         return segments;
     }
 
-    private calc_variance(id_b: number, id_a: number) {
-        let sum_sq = this.lut[id_b].aa - this.lut[id_a].aa;
+    private calc_center(
+        id_b: number,
+        id_a: number
+    ): {
+        x: number;
+        y: number;
+    } {
         let sum = this.lut[id_b].a - this.lut[id_a].a;
         let n = id_b - id_a;
-        return (sum_sq - (sum * sum) / n) / (n - 1);
+        return {
+            x: (id_b + id_a) / 2,
+            y: sum / n,
+        };
+    }
+
+    private calc_dist(id: number, p: { x: number; y: number }): number {
+        let lut = this.lut[id];
+        let d_x = id - p.x;
+        let d_y = lut.angle - p.y;
+        return sqrt(d_x * d_x + (d_y * d_y)/2);
     }
 }
