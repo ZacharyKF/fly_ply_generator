@@ -376,22 +376,22 @@ export function points_to_imodel(loop: boolean, points: Point[]): IModel {
   return new models.ConnectTheDots(loop, points_clean);
 }
 
-const colours: string[] = [
+export const colours: string[] = [
   "aqua",
-  "blue",
+  // "blue", RESERVED
   "fuchsia",
-  "green",
-  "gray",
+  // "green",
+  // "gray",
   "lime",
-  "maroon",
-  "navy",
-  "olive",
+  // "maroon",
+  // "navy",
+  // "olive",
   "orange",
-  "purple",
-  "red",
-  "silver",
+  // "purple",
+  // "red", RESERVED
+  // "silver",
   "teal",
-  "white",
+  // "white",
   "yellow",
   // "black",
 ];
@@ -401,6 +401,22 @@ export function color_naturally<T extends IModel | IPath>(
   index: number
 ): T {
   val.layer = colours[index % colours.length];
+  return val;
+}
+
+export const dark_colours: string[] = [
+  "maroon",
+  "navy",
+  "olive",
+  "purple",
+  "black",
+];
+
+export function color_dark<T extends IModel | IPath>(
+  val: T,
+  index: number
+): T {
+  val.layer = dark_colours[index % dark_colours.length];
   return val;
 }
 
