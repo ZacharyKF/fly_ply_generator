@@ -3,7 +3,7 @@
 //  the user lean more on the control points to create a smooth surface
 
 import { IModel, IModelMap, IPathMap, model, models } from "makerjs";
-import { floor } from "mathjs";
+import { abs, floor } from "mathjs";
 import { DrawableHull, FlattenResult } from "./boxed_hull_test";
 import { color_dark, color_naturally } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
@@ -28,7 +28,7 @@ export class RationalBezierHull implements DrawableHull {
         segments: number,
         max_dist: number,
         variance_tolerance: number,
-        max_segments: number,
+        max_segments: number
     ) {
         this.wind_beziers = wind_curves.map(
             (curve) => new RationalBezier(curve)
@@ -69,7 +69,7 @@ export class RationalBezierHull implements DrawableHull {
         curves: RationalBezier[],
         min_segments: number,
         max_segments: number,
-        variance_tolerance: number,
+        variance_tolerance: number
     ): HullSegment {
         let hull_curve = new RationalBezier(
             curves
@@ -176,9 +176,9 @@ export class RationalBezierHull implements DrawableHull {
             this.lee_beziers,
             1,
             1,
-            1,
+            1
         ).hull_curve.as_list();
-        let wind = this.make_segment(dist, this.wind_beziers, 1, 1, 1, )
+        let wind = this.make_segment(dist, this.wind_beziers, 1, 1, 1)
             .hull_curve.as_list()
             .reverse();
         let bulkhead: IModel = new models.ConnectTheDots(
@@ -202,9 +202,11 @@ export class RationalBezierHull implements DrawableHull {
 
     volume_under(dist: number): number {
         let volume = 0;
-        let prev_dist = 0;
 
-        for (let i = 0; i < this.hull_segments_lee.length; i++) {
+        let prev_dist =
+            this.hull_segments_lee[this.hull_segments_lee.length - 1].dist;
+
+        for (let i = this.hull_segments_lee.length - 2; i >= 0; i--) {
             let current_seg = this.hull_segments_lee[i];
             let l = current_seg.hull_curve.find_dimm_dist(1, dist);
 
@@ -212,16 +214,18 @@ export class RationalBezierHull implements DrawableHull {
                 break;
             }
 
-            volume +=
-                (current_seg.dist - prev_dist) *
-                current_seg.hull_curve.find_area(0, l.t, 1, 2);
+            volume += abs(
+                (prev_dist - current_seg.dist) *
+                    current_seg.hull_curve.find_area(0, l.t, 1, 2)
+            );
 
             prev_dist = current_seg.dist;
         }
 
-        prev_dist = 0;
+        prev_dist =
+            this.hull_segments_wind[this.hull_segments_wind.length - 1].dist;
 
-        for (let i = 0; i < this.hull_segments_wind.length; i++) {
+        for (let i = this.hull_segments_wind.length - 2; i >= 0; i--) {
             let current_seg = this.hull_segments_wind[i];
             let l = current_seg.hull_curve.find_dimm_dist(1, dist);
 
@@ -229,9 +233,10 @@ export class RationalBezierHull implements DrawableHull {
                 break;
             }
 
-            volume +=
-                (current_seg.dist - prev_dist) *
-                current_seg.hull_curve.find_area(0, l.t, 1, 2);
+            volume += abs(
+                (prev_dist - current_seg.dist) *
+                    current_seg.hull_curve.find_area(0, l.t, 1, 2)
+            );
             prev_dist = current_seg.dist;
         }
 
