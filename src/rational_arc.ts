@@ -14,7 +14,6 @@ export class RationalArc implements RationalPath {
     vec_b: Point;
     vec_c: Point;
     angle: number;
-    large: boolean;
     length: number;
 
     constructor(center: Point, a: Point, b: Point, c: Point, radius: number) {
@@ -27,11 +26,6 @@ export class RationalArc implements RationalPath {
         this.vec_b = b.sub(center);
         this.vec_c = c.sub(center);
         this.angle = this.vec_a.angle(this.vec_c);
-        this.large = this.vec_a.angle(this.vec_b) + this.vec_c.dot(this.vec_b) > pi;
-        if (this.large) {
-            console.log(this.angle)
-        }
-        
         this.length = tau * radius * (this.angle / tau);
     }
 
@@ -62,9 +56,6 @@ export class RationalArc implements RationalPath {
         let angle_pb = vec_p.angle(this.vec_c);
 
         let inside = angle_pa <= this.angle && angle_pb <= this.angle;
-        if (this.large) {
-            inside = !inside;
-        }
 
         if (inside) {
             // If it's angle to each vector is less than the total angle, it's

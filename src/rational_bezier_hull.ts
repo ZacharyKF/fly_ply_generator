@@ -27,7 +27,8 @@ export class RationalBezierHull implements DrawableHull {
         lee_curves: Point[][],
         segments: number,
         max_dist: number,
-        variance_tolerance: number
+        variance_tolerance: number,
+        max_segments: number,
     ) {
         this.wind_beziers = wind_curves.map(
             (curve) => new RationalBezier(curve)
@@ -45,6 +46,7 @@ export class RationalBezierHull implements DrawableHull {
                 i,
                 this.lee_beziers,
                 min_segs_lee,
+                max_segments,
                 variance_tolerance
             );
             min_segs_lee = lee_seg.curve_segments.length;
@@ -54,6 +56,7 @@ export class RationalBezierHull implements DrawableHull {
                 i,
                 this.wind_beziers,
                 min_segs_wind,
+                max_segments,
                 variance_tolerance
             );
             min_segs_wind = wind_seg.curve_segments.length;
@@ -65,7 +68,8 @@ export class RationalBezierHull implements DrawableHull {
         dist: number,
         curves: RationalBezier[],
         min_segments: number,
-        variance_tolerance: number
+        max_segments: number,
+        variance_tolerance: number,
     ): HullSegment {
         let hull_curve = new RationalBezier(
             curves
@@ -76,7 +80,7 @@ export class RationalBezierHull implements DrawableHull {
         let curve_segments = hull_curve.find_segments(
             variance_tolerance,
             min_segments,
-            7
+            max_segments
         );
 
         return {
@@ -171,9 +175,10 @@ export class RationalBezierHull implements DrawableHull {
             dist,
             this.lee_beziers,
             1,
-            1
+            1,
+            1,
         ).hull_curve.as_list();
-        let wind = this.make_segment(dist, this.wind_beziers, 1, 1)
+        let wind = this.make_segment(dist, this.wind_beziers, 1, 1, 1, )
             .hull_curve.as_list()
             .reverse();
         let bulkhead: IModel = new models.ConnectTheDots(

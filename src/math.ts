@@ -302,9 +302,6 @@ export function bezier_controls_from_line_points(points: Point[]): Point[] {
     }
   }
 
-  // console.log("-------")
-  // m_data.map(row => row.join(", ")).forEach(val => console.log(val))
-
   let m: Matrix = matrix(m_data);
   let m_invert: Matrix = inv(m);
 

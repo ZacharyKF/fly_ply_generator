@@ -215,9 +215,6 @@ export class CustomBezier extends WrappedCurve {
       }
     }
 
-    // console.log("-------")
-    // m_data.map(row => row.join(", ")).forEach(val => console.log(val))
-
     let m: Matrix = matrix(m_data);
     let m_invert: Matrix = inv(m);
 
@@ -239,8 +236,6 @@ export class CustomBezier extends WrappedCurve {
         y: y[idx][0],
       };
     });
-
-    // bezier_points.forEach(p => console.log(p))
 
     // Re-adjust the start and end to prevent drift
     bezier_points[0] = points[0];
@@ -724,9 +719,6 @@ export class CustomBezier extends WrappedCurve {
     if (safety >= 100) {
       break;
     }
-
-    // console.log("L835: [F] arc found", t_s, prev_e, prev_arc.x, prev_arc.y, prev_arc.s, prev_arc.e);
-
     prev_arc = prev_arc ? prev_arc : arc;
     intervals.push(prev_arc);
     t_s = prev_e;

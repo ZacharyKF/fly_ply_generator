@@ -113,8 +113,8 @@ export class RationalBezier {
 
             // Integral angles
             b.angle = angle;
-            b.aa = angle * angle + a.aa;
             b.a = angle + a.a;
+            b.aa = angle * angle + a.aa;
         }
 
         this.length = last_lut.d;
@@ -296,8 +296,8 @@ export class RationalBezier {
         max_segments: number
     ): RationalSegment[] {
         let min_id = 1;
-        let max_id = this.lut.length - 1;
-        let num_segs = min(max(min_segments, 1), max_segments);
+        let max_id = this.lut.length - 2;
+        let num_segs = min_segments;
 
         // We'll build our segments from these eventually
         let divisors: number[];
@@ -307,9 +307,9 @@ export class RationalBezier {
             // Initializing the divisors
             divisors = [];
             divisors.push(min_id);
-            let seg_step = floor(max_id / (num_segs + 1));
-            for (let i = 1; i <= num_segs; i++) {
-                divisors.push(i * seg_step);
+            let seg_step = floor((max_id - min_id) / num_segs);
+            for (let i = 1; i < num_segs; i++) {
+                divisors.push(min_id + i * seg_step);
             }
             divisors.push(max_id);
 
@@ -318,69 +318,42 @@ export class RationalBezier {
             do {
                 changed = false;
 
-                let means = [];
-                for (let i = 1; i < divisors.length; i++) {
-                    means.push(
-                        (this.lut[divisors[i] - 1].a -
-                            this.lut[divisors[i - 1] - 1].a) /
-                            (divisors[i] - divisors[i - 1])
-                    );
-                }
-
                 // Loop across our divisors, checking only the middle ones
                 for (let i = 1; i < divisors.length - 1; i++) {
-                    let idx = divisors[i] - 1;
+                    let low = divisors[i - 1] - 1;
+                    let mid = divisors[i];
+                    let high = divisors[i + 1]
 
-                    let angel_curr = this.lut[idx].angle;
-                    let mean_curr = means[i - 1];
+                    let curr_variance = this.calc_variance(mid, low);
+                    let next_variance = this.calc_variance(high, mid);
 
-                    let angle_next = this.lut[idx + 1].angle;
-                    let mean_next = means[i];
+                    let if_left_curr = this.calc_variance(mid - 1, low);
+                    let if_left_next = this.calc_variance(high, mid - 1);
 
-                    // Check if the divisor wants to go left or right
-                    let div_a =
-                        abs(angel_curr - mean_curr) <
-                        abs(angel_curr - mean_next)
-                            ? 0
-                            : 1;
-
-                    // Check if the divisors neighbor wants to go left or
-                    //  right
-                    let div_b =
-                        abs(angle_next - mean_curr) <
-                        abs(angle_next - mean_next)
-                            ? 0
-                            : 1;
-
-                    // If they're different, then we're done with the
-                    //  divisor
-                    if (div_a != div_b) {
+                    if (if_left_curr < curr_variance && if_left_next < next_variance) {
+                        divisors[i]--;
+                        changed = true;
                         continue;
                     }
 
-                    // Otherwise we need to modify the divisors and segments
-                    //  accordingly
-                    if (div_b == 0 && divisors[i] < divisors[i + 1] - 1) {
-                        divisors[i] = divisors[i] + 1;
+                    let if_right_curr = this.calc_variance(mid + 1, low);
+                    let if_right_next = this.calc_variance(high, mid + 1);
+
+                    if (if_right_curr < curr_variance && if_right_next < next_variance) {
+                        divisors[i]++;
                         changed = true;
-                    } else if (divisors[i] - 1 > divisors[i - 1]) {
-                        divisors[i] = divisors[i] - 1;
-                        changed = true;
-                    }
+                    }                    
                 }
             } while (changed);
 
             // Find our maximum variance
             variance_max = 0;
             for (let i = 1; i < divisors.length; i++) {
-                let a = this.lut[divisors[i] - 1];
-                let b = this.lut[divisors[i - 1] - 1];
                 variance_max = max(
                     variance_max,
                     this.calc_variance(
-                        a.a - b.a,
-                        a.aa - b.aa,
-                        divisors[i] - divisors[i - 1]
+                        divisors[i],
+                        divisors[i - 1] - 1,
                     )
                 );
             }
@@ -391,10 +364,9 @@ export class RationalBezier {
 
             // Iterate our number of segments so that if we need to go again we
             //  add more segments to decrease the variance
-            num_segs++;
         } while (
             variance_max > variance_tolerance &&
-            divisors.length < max_segments
+            num_segs++ < max_segments
         );
 
         let segments = [];
@@ -406,7 +378,10 @@ export class RationalBezier {
         return segments;
     }
 
-    private calc_variance(sum: number, sum_sq: number, n: number): number {
-        return (sum_sq - (sum * sum) / n) / n;
+    private calc_variance(id_b: number, id_a: number) {
+        let sum_sq = this.lut[id_b].aa - this.lut[id_a].aa;
+        let sum = this.lut[id_b].a - this.lut[id_a].a;
+        let n = id_b - id_a;
+        return (sum_sq - (sum * sum) / n) / (n - 1);
     }
 }

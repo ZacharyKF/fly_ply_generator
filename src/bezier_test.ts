@@ -11,7 +11,7 @@ import { color_naturally } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
 import { Point } from "./rational_point";
 
-let variance_tolerance = 0.00000000003;
+let variance_tolerance = 0.0000015;
 
 let points: Point[] = [
     new Point(0, 0, 10, 1),
@@ -32,7 +32,7 @@ for (let d = 0; d < 3; d++) {
     dimm_maps["dimm_curve_" + d] = rational_bezier.draw(d);
 }
 
-let segments = rational_bezier.find_segments(variance_tolerance, 1, 20);
+let segments = rational_bezier.find_segments(variance_tolerance, 1, 40);
 console.log("Number of segment: " + segments.length)
 
 let t_points: IPoint[] = [];

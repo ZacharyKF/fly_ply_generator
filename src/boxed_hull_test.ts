@@ -34,25 +34,26 @@ export interface DrawableHull {
 
 // Drawing parameters
 let scale_up = 100;
-let slices = 200;
-let segments_drawn = 100;
-let draw_lee = true;
-let draw_wind = true;
+let slices = 250;
+let segments_drawn = 250;
+let lee_draw = true;
+let wind_draw = false;
 let as_divisions = true;
 
 // Hull division parameters
-let variance_threshold = 0.003;
+let variance_threshold = 0.000815;
+let max_segments = 3;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;
 let hull_ratio = 1.0 / 10.0;
 let hull_width = hull_length * hull_ratio;
-let bow_rake = 5;
+let bow_rake = 10;
 let asymmetry_wind = 4 / 7;
 let gunnel_jump = 2 / 3;
 let horizontal_flat = 5 / 7;
 let vertical_flat = 4 / 7;
-let lee_cut_depth = 3 / 5;
+let lee_cut_depth = 2 / 5;
 let lee_cut_width = 2 / 5;
 let hull_depth = -2.25;
 let gunnel_rise = 0.5;
@@ -67,9 +68,9 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 lee_cut_width = lee_cut_width * asymmetry_lee;
 
 let weights: number[][] = [
-  [2, 4, 2], // bilge curve
-  [2, 4], // lee special
-  [2, 3.5], // side default
+  [1, 1, 1], // bilge curve
+  [0, 0], // lee special
+  [1, 1], // side default
   [1, 1, 1, 1], // gunnel
 ];
 
@@ -159,6 +160,7 @@ let hull = new RationalBezierHull(
     slices,
     meeting_point.x,
     variance_threshold,
+    max_segments
 );
 
 let proj_maps: IModelMap[] = [{}, {}, {}];
@@ -183,14 +185,14 @@ for (let i = 0; i < 3; i++) {
     proj_maps[i]["hull_segments"] = hull.draw_segments(
         i,
         segments_drawn,
-        draw_lee,
-        draw_wind,
+        lee_draw,
+        wind_draw,
         as_divisions
     );
     // proj_maps[i]["hull_curves"] = hull.draw_hull_curves(
     //     i,
-    //     draw_lee,
-    //     draw_wind
+    //     lee_draw,
+    //     wind_draw
     // );
 }
 
@@ -214,9 +216,9 @@ projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
 projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
 
 // let { lee, wind, lee_panels, wind_panels } =
-//     hull.draw_flattened_hull(
-//         draw_lee,
-//         draw_wind,
+//     hull.lee_drawflattened_hull(
+//         lee_draw,
+//         wind_draw,
 //         puzzle_tooth_width,
 //         puzzle_tooth_angle,
 //         bulk_heads
@@ -224,7 +226,7 @@ projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
 
 // let x_offset = hull_length / 7;
 
-// if (draw_lee) {
+// if (lee_draw) {
 //     let name = "lee_flat";
 //     export_svg(name, lee);
 //     lee = MakerJs.model.rotate(lee, -90);
@@ -239,7 +241,7 @@ projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
 //         export_svg("lee_panel_" + idx, panel);
 //     });
 // }
-// if (draw_wind) {
+// if (wind_draw) {
 //     let name = "wind_flat";
 //     export_svg(name, wind);
 //     wind = MakerJs.model.rotate(wind, -90);
@@ -270,20 +272,20 @@ bulk_heads.forEach((dist, idx) => {
 
 export_svg("hull_model", model);
 
-// let water_line_volumes_ratio: number[] = [];
-// waterlines.forEach((w) => {
-//     let volume = hull.volume_under(w + hull_depth) * 0.02831685;
-//     water_line_volumes_ratio.push(volume);
-//     console.log("\n==== WATERLINE " + w.toPrecision(5) + " ====");
-//     console.log("Volume: " + volume.toPrecision(5) + " m3");
-//     console.log("Displacement: " + (volume * 1024).toPrecision(5) + " kg");
-// });
+let water_line_volumes_ratio: number[] = [];
+waterlines.forEach((w) => {
+    let volume = hull.volume_under(w + hull_depth) * 0.02831685;
+    water_line_volumes_ratio.push(volume);
+    console.log("\n==== WATERLINE " + w.toPrecision(5) + " ====");
+    console.log("Volume: " + volume.toPrecision(5) + " m3");
+    console.log("Displacement: " + (volume * 1024).toPrecision(5) + " kg");
+});
 
-// if (water_line_volumes_ratio.length > 1) {
-//     console.log("\n==== WATERLINE VOLUME RATIOS ====");
-//     for (let i = 1; i < water_line_volumes_ratio.length; i++) {
-//         console.log(
-//             water_line_volumes_ratio[i] / water_line_volumes_ratio[i - 1]
-//         );
-//     }
-// }
+if (water_line_volumes_ratio.length > 1) {
+    console.log("\n==== WATERLINE VOLUME RATIOS ====");
+    for (let i = 1; i < water_line_volumes_ratio.length; i++) {
+        console.log(
+            water_line_volumes_ratio[i] / water_line_volumes_ratio[i - 1]
+        );
+    }
+}
