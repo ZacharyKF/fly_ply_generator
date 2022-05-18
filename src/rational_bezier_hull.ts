@@ -2,13 +2,14 @@
 //  for excess points to guide the hull in wacky directions. This design lets
 //  the user lean more on the control points to create a smooth surface
 
-import { IModel, IModelMap, IPathMap, model, models } from "makerjs";
+import { IModel, IModelMap, IPathMap, model, models, point } from "makerjs";
 import { abs, floor } from "mathjs";
 import { DrawableHull, FlattenResult } from "./boxed_hull_test";
-import { color_dark, color_naturally } from "./makerjs_tools";
+import { color_dark } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
-import { Point } from "./rational_point";
+import { Point3D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
+import { SegmentedHull } from "./segmented_hull";
 
 export interface HullSegment {
     dist: number;
@@ -21,14 +22,16 @@ export class RationalBezierHull implements DrawableHull {
     lee_beziers: RationalBezier[];
     hull_segments_lee: HullSegment[];
     hull_segments_wind: HullSegment[];
+    internal_hull: SegmentedHull;
 
     constructor(
-        wind_curves: Point[][],
-        lee_curves: Point[][],
+        wind_curves: Point3D[][],
+        lee_curves: Point3D[][],
         segments: number,
         max_dist: number,
         variance_tolerance: number,
-        max_segments: number
+        max_segments: number,
+        curve_colinearity_tolerance: number
     ) {
         this.wind_beziers = wind_curves.map(
             (curve) => new RationalBezier(curve)
@@ -41,7 +44,7 @@ export class RationalBezierHull implements DrawableHull {
         let i_step = max_dist / segments;
         let min_segs_lee = 1;
         let min_segs_wind = 1;
-        for (let i = max_dist; i >= 0; i -= i_step) {
+        for (let i = max_dist - i_step; i >= 0; i -= i_step) {
             let lee_seg = this.make_segment(
                 i,
                 this.lee_beziers,
@@ -50,7 +53,7 @@ export class RationalBezierHull implements DrawableHull {
                 variance_tolerance
             );
             min_segs_lee = lee_seg.curve_segments.length;
-            this.hull_segments_lee.push(lee_seg);
+            this.hull_segments_lee.unshift(lee_seg);
 
             let wind_seg = this.make_segment(
                 i,
@@ -60,8 +63,14 @@ export class RationalBezierHull implements DrawableHull {
                 variance_tolerance
             );
             min_segs_wind = wind_seg.curve_segments.length;
-            this.hull_segments_wind.push(wind_seg);
+            this.hull_segments_wind.unshift(wind_seg);
         }
+
+        this.internal_hull = new SegmentedHull(
+            this.hull_segments_lee,
+            this.hull_segments_wind,
+            curve_colinearity_tolerance
+        );
     }
 
     make_segment(
@@ -71,13 +80,13 @@ export class RationalBezierHull implements DrawableHull {
         max_segments: number,
         variance_tolerance: number
     ): HullSegment {
-        let hull_curve = new RationalBezier(
-            curves
-                .map((c) => c.find_dimm_dist(0, dist))
-                .map((l) => l.p.set_dimm(dist, 0))
-        );
+        const points = curves
+            .map((c) => c.find_dimm_dist(0, dist))
+            .map((l) => l.p.set_dimm(dist, 0));
 
-        let curve_segments = hull_curve.find_segments(
+        const hull_curve = new RationalBezier(points);
+
+        const curve_segments = hull_curve.find_segments(
             variance_tolerance,
             min_segments,
             max_segments
@@ -151,14 +160,6 @@ export class RationalBezierHull implements DrawableHull {
         };
     }
 
-    draw_hull_curves(
-        dimm: number,
-        lee: boolean,
-        wind: boolean
-    ): MakerJs.IModel {
-        throw new Error("Method not implemented.");
-    }
-
     draw_flattened_hull(
         lee: boolean,
         wind: boolean,
@@ -166,7 +167,13 @@ export class RationalBezierHull implements DrawableHull {
         puzzle_tooth_angle: number,
         bulkheads: number[]
     ): FlattenResult {
-        throw new Error("Method not implemented.");
+        return this.internal_hull.draw_flattened_hull(
+            lee,
+            wind,
+            puzzle_tooth_width,
+            puzzle_tooth_angle,
+            bulkheads
+        );
     }
 
     // This is fairly easy, the idx is just for naming
@@ -201,45 +208,32 @@ export class RationalBezierHull implements DrawableHull {
     }
 
     volume_under(dist: number): number {
-        let volume = 0;
+        const segments_to_volume = (segments: HullSegment[]): number => {
+            let volume = 0;
+            let prev_dist = segments[0].dist;
 
-        let prev_dist =
-            this.hull_segments_lee[this.hull_segments_lee.length - 1].dist;
+            for (let i = 1; i < segments.length; i++) {
+                const current_seg = segments[i];
+                const l = current_seg.hull_curve.find_dimm_dist(1, dist);
 
-        for (let i = this.hull_segments_lee.length - 2; i >= 0; i--) {
-            let current_seg = this.hull_segments_lee[i];
-            let l = current_seg.hull_curve.find_dimm_dist(1, dist);
+                if (l.t <= 0) {
+                    prev_dist = current_seg.dist;
+                    continue;
+                }
 
-            if (l.t <= 0) {
-                break;
+                volume += abs(
+                    (prev_dist - current_seg.dist) *
+                        current_seg.hull_curve.find_area(0, l.t, 1, 2)
+                );
+
+                prev_dist = current_seg.dist;
             }
+            return volume;
+        };
 
-            volume += abs(
-                (prev_dist - current_seg.dist) *
-                    current_seg.hull_curve.find_area(0, l.t, 1, 2)
-            );
-
-            prev_dist = current_seg.dist;
-        }
-
-        prev_dist =
-            this.hull_segments_wind[this.hull_segments_wind.length - 1].dist;
-
-        for (let i = this.hull_segments_wind.length - 2; i >= 0; i--) {
-            let current_seg = this.hull_segments_wind[i];
-            let l = current_seg.hull_curve.find_dimm_dist(1, dist);
-
-            if (l.t <= 0) {
-                break;
-            }
-
-            volume += abs(
-                (prev_dist - current_seg.dist) *
-                    current_seg.hull_curve.find_area(0, l.t, 1, 2)
-            );
-            prev_dist = current_seg.dist;
-        }
-
-        return volume;
+        return (
+            segments_to_volume(this.hull_segments_lee) +
+            segments_to_volume(this.hull_segments_wind)
+        );
     }
 }

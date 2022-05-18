@@ -1,7 +1,6 @@
 import { Point } from "bezier-js";
 import { IModel } from "makerjs";
 import { abs, cos, inv, matrix, Matrix, max, min, multiply, sin, transpose } from "mathjs";
-import { Interval } from "./boxed_path_hull";
 import { flatten_point, points_to_imodel, point_dist } from "./makerjs_tools";
 import {
   angle,
@@ -98,8 +97,8 @@ export class CustomBezier extends WrappedCurve {
     recursive_split(this.controls, t_split);
 
     return {
-      upper: new CustomBezier(right, []),
-      lower: new CustomBezier(left, []),
+      upper: new CustomBezier(right),
+      lower: new CustomBezier(left),
     }
   }
 
@@ -129,30 +128,24 @@ export class CustomBezier extends WrappedCurve {
   }
 
   public controls: Point[];
-  public weights: number[];
 
-  constructor(points: Point[], weights: number[]) {
+  constructor(points: Point[]) {
     super();
     this.controls = points;
-    if (weights.length < points.length) {
-      this.weights = new Array(this.controls.length).fill(0.5);
-    } else {
-      this.weights = weights;
-    }
     this.populate_lut();
   }
 
   static fit_to_points(points: Point[], order: number) : CustomBezier {
     let controls = CustomBezier.fit_controls(points);
     controls = CustomBezier.reduce_order(controls, order);
-    return new CustomBezier(controls, []);
+    return new CustomBezier(controls);
   }
 
   get(t: number): Point {
-    return CustomBezier.get(this.controls,this.weights, t);
+    return CustomBezier.get(this.controls, t);
   }
 
-  static get(controls: Point[], weights: number[], t: number): Point {
+  static get(controls: Point[], t: number): Point {
     let n = controls.length - 1;
     if (t <= 0.5) {
       let u = t / (1 - t);

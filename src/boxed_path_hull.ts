@@ -22,22 +22,6 @@ import {
 } from "./math";
 import { HullCurve, HullSegment, SegmentedHull } from "./segmented_hull";
 
-export interface Interval {
-  start: number;
-  end: number;
-}
-
-export interface CurveOffsetIntervals {
-  dist: number;
-  seg_idx: number;
-  intervals: Interval[];
-}
-
-export interface CurveOffsetInterval {
-  dist: number;
-  seg_idx: number;
-  interval: Interval;
-}
 
 export class BoxedPathHull implements DrawableHull {
   gunnel_curve_lee: Bezier;

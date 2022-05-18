@@ -5,22 +5,26 @@ import { RationalBezier } from "./rational_bezier";
 import { RationalLine } from "./rational_line";
 import { circle_center } from "./rational_math";
 import { RationalPath } from "./rational_path";
-import { Point } from "./rational_point";
+import { Point3D } from "./rational_point";
 
 export class RationalSegment {
     parent: RationalBezier;
     start: number;
-    start_point: Point;
+    start_t: number;
+    start_point: Point3D;
     end: number;
-    end_point: Point;
+    end_t: number;
+    end_point: Point3D;
     segment: RationalPath;
     error: number;
 
     constructor(parent: RationalBezier, start: number, end: number) {
         this.parent = parent;
         this.start_point = parent.lut[start].p;
+        this.start_t = parent.lut[start].t;
         this.start = start;
         this.end_point = parent.lut[end].p;
+        this.end_t = parent.lut[end].t;
         this.end = end;
 
         // Do a quarternary search for the best fit of a path to our segment

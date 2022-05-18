@@ -2,7 +2,7 @@ import * as fs from "fs";
 import MakerJs, { IModel, IModelMap, exporter, IPathMap } from "makerjs";
 import { pi, tan } from "mathjs";
 import { RationalBezierHull } from "./rational_bezier_hull";
-import { Point } from "./rational_point";
+import { Point3D } from "./rational_point";
 
 export interface FlattenResult {
     lee: IModel;
@@ -13,7 +13,6 @@ export interface FlattenResult {
 
 export interface DrawableHull {
     draw_main_curves(dimm: number): IModel;
-    draw_hull_curves(dimm: number, lee: boolean, wind: boolean): IModel;
     draw_segments(
         dimm: number,
         number_segs: number,
@@ -34,15 +33,16 @@ export interface DrawableHull {
 
 // Drawing parameters
 let scale_up = 100;
-let slices = 250;
-let segments_drawn = 250;
+let slices = 100;
+let segments_drawn = 100;
 let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
-let variance_threshold = 0.4225;
+let variance_threshold = 2;//0.4225;
 let max_segments = 5;
+let curve_colinearity_tolerance = 0.975;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;
@@ -57,7 +57,6 @@ let lee_cut_depth = 21 / 35;
 let lee_cut_width = 1/7;
 let hull_depth = -2.25;
 let gunnel_rise = 0.5;
-let curve_colinearity_tolerance = 0.95;
 let puzzle_tooth_width = hull_depth / 30;
 let puzzle_tooth_angle = (10 * pi) / 180;
 
@@ -80,9 +79,9 @@ let bulk_heads: number[] = [
     (2 * hull_length_half) / 3,
 ];
 
-let waterlines: number[] = [1, 1.25];
+let waterlines: number[] = [1, 1.25, 1.5, 1.75, 2];
 
-let meeting_point = new Point(
+let meeting_point = new Point3D(
     hull_length_half + gunnel_rise * tan(rake_rad),
     gunnel_rise,
     0.0,
@@ -90,13 +89,13 @@ let meeting_point = new Point(
 );
 
 // ADD FROM BOTTOM TO TOP
-let lee_curves: Point[][] = [];
-let wind_curves: Point[][] = [];
+let lee_curves: Point3D[][] = [];
+let wind_curves: Point3D[][] = [];
 
 // Pull towards the bow to increase waterline
-let bilge_curve: Point[] = [
-    new Point(0.0, hull_depth, 0.0, weights[0][0]),
-    new Point(
+let bilge_curve: Point3D[] = [
+    new Point3D(0.0, hull_depth, 0.0, weights[0][0]),
+    new Point3D(
         hull_length_half + hull_depth * tan((bow_rake * pi) / 180.0),
         hull_depth,
         0.0,
@@ -110,9 +109,9 @@ wind_curves.push(bilge_curve);
 // This special curve causes the inversion on the lee-side, increasing the
 //  hydrofoil effect, while reducing the initial buoyancy, enabling waterline
 //  consistency between loads
-let special_curve_lee: Point[] = [
-    new Point(0.0, hull_depth * lee_cut_depth, lee_cut_width, weights[1][0]),
-    new Point(
+let special_curve_lee: Point3D[] = [
+    new Point3D(0.0, hull_depth * lee_cut_depth, lee_cut_width, weights[1][0]),
+    new Point3D(
         hull_length_half * horizontal_flat,
         hull_depth * lee_cut_depth,
         lee_cut_width,
@@ -124,9 +123,9 @@ lee_curves.push(special_curve_lee);
 
 // Side curves are a simple curve along the side to help control the
 //  "pointy-ness" of the hull
-let side_default: Point[] = [
-    new Point(0.0, hull_depth * vertical_flat, hull_width, weights[2][0]),
-    new Point(
+let side_default: Point3D[] = [
+    new Point3D(0.0, hull_depth * vertical_flat, hull_width, weights[2][0]),
+    new Point3D(
         hull_length_half * horizontal_flat,
         hull_depth * vertical_flat,
         hull_width,
@@ -138,11 +137,11 @@ lee_curves.push(side_default.map((p) => p.mul_dimm(asymmetry_lee, 2)));
 wind_curves.push(side_default.map((p) => p.mul_dimm(asymmetry_wind, 2)));
 
 // Gunnel curves get added last, they need to be converted like the side curves
-let gunnel_default: Point[] = [
-    new Point(0.0, 0.0, hull_width, weights[3][0]),
-    new Point(gunnel_jump * hull_length_half, 0.0, hull_width,  weights[3][1]),
-    new Point(gunnel_jump * hull_length_half, gunnel_rise, hull_width,  weights[3][2]),
-    new Point(horizontal_flat * hull_length_half, gunnel_rise, hull_width,  weights[3][3]),
+let gunnel_default: Point3D[] = [
+    new Point3D(0.0, 0.0, hull_width, weights[3][0]),
+    new Point3D(gunnel_jump * hull_length_half, 0.0, hull_width,  weights[3][1]),
+    new Point3D(gunnel_jump * hull_length_half, gunnel_rise, hull_width,  weights[3][2]),
+    new Point3D(horizontal_flat * hull_length_half, gunnel_rise, hull_width,  weights[3][3]),
     meeting_point,
 ];
 lee_curves.push(gunnel_default.map((p) => p.mul_dimm(asymmetry_lee, 2)));
@@ -160,7 +159,8 @@ let hull = new RationalBezierHull(
     slices,
     meeting_point.x,
     variance_threshold,
-    max_segments
+    max_segments,
+    curve_colinearity_tolerance
 );
 
 let proj_maps: IModelMap[] = [{}, {}, {}];
@@ -189,11 +189,6 @@ for (let i = 0; i < 3; i++) {
         wind_draw,
         as_divisions
     );
-    // proj_maps[i]["hull_curves"] = hull.draw_hull_curves(
-    //     i,
-    //     lee_draw,
-    //     wind_draw
-    // );
 }
 
 for (let i = 0; i < 3; i++) {
@@ -202,8 +197,8 @@ for (let i = 0; i < 3; i++) {
     }
     let paths: IPathMap = {};
     waterlines.forEach((wl, idx) => {
-        let a: Point = new Point(hull_length_half, hull_depth + wl, hull_width, 0);
-        let b: Point = new Point(0, hull_depth + wl, -hull_width, 0);
+        let a: Point3D = new Point3D(hull_length_half, hull_depth + wl, hull_width, 0);
+        let b: Point3D = new Point3D(0, hull_depth + wl, -hull_width, 0);
         paths["wl_" + i + "_" + idx] = {
             layer: "aqua",
             ...new MakerJs.paths.Line(a.to_ipoint(i), b.to_ipoint(i)),
@@ -215,47 +210,47 @@ for (let i = 0; i < 3; i++) {
 projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
 projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
 
-// let { lee, wind, lee_panels, wind_panels } =
-//     hull.lee_drawflattened_hull(
-//         lee_draw,
-//         wind_draw,
-//         puzzle_tooth_width,
-//         puzzle_tooth_angle,
-//         bulk_heads
-//     );
+let { lee, wind, lee_panels, wind_panels } =
+    hull.draw_flattened_hull(
+        lee_draw,
+        wind_draw,
+        puzzle_tooth_width,
+        puzzle_tooth_angle,
+        bulk_heads
+    );
 
-// let x_offset = hull_length / 7;
+let x_offset = hull_length / 7;
 
-// if (lee_draw) {
-//     let name = "lee_flat";
-//     export_svg(name, lee);
-//     lee = MakerJs.model.rotate(lee, -90);
-//     lee = MakerJs.model.mirror(lee, true, true);
-//     lee = MakerJs.model.move(lee, [
-//         x_offset + gunnel_rise * 1.05,
-//         -hull_depth * 1.1,
-//     ]);
-//     model_map[name] = lee;
+if (lee_draw) {
+    let name = "lee_flat";
+    export_svg(name, lee);
+    lee = MakerJs.model.rotate(lee, 90);
+    lee = MakerJs.model.mirror(lee, true, true);
+    lee = MakerJs.model.move(lee, [
+        x_offset + gunnel_rise * 1.05,
+        hull_depth * 1.1,
+    ]);
+    model_map[name] = lee;
 
-//     lee_panels.forEach((panel, idx) => {
-//         export_svg("lee_panel_" + idx, panel);
-//     });
-// }
-// if (wind_draw) {
-//     let name = "wind_flat";
-//     export_svg(name, wind);
-//     wind = MakerJs.model.rotate(wind, -90);
-//     wind = MakerJs.model.mirror(wind, false, true);
-//     wind = MakerJs.model.move(wind, [
-//         x_offset - gunnel_rise * 1.05,
-//         -hull_depth * 1.1,
-//     ]);
-//     model_map[name] = wind;
+    lee_panels.forEach((panel, idx) => {
+        export_svg("lee_panel_" + idx, panel);
+    });
+}
+if (wind_draw) {
+    let name = "wind_flat";
+    export_svg(name, wind);
+    wind = MakerJs.model.rotate(wind, 90);
+    wind = MakerJs.model.mirror(wind, false, true);
+    wind = MakerJs.model.move(wind, [
+        x_offset - gunnel_rise * 1.05,
+        hull_depth * 1.1,
+    ]);
+    model_map[name] = wind;
 
-//     wind_panels.forEach((panel, idx) => {
-//         export_svg("wind_panel_" + idx, panel);
-//     });
-// }
+    wind_panels.forEach((panel, idx) => {
+        export_svg("wind_panel_" + idx, panel);
+    });
+}
 
 bulk_heads.forEach((dist, idx) => {
     let bulk_head = hull.draw_bulkhead(dist, idx);

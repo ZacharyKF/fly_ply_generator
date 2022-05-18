@@ -16,8 +16,7 @@ import {
   sqrt,
   transpose,
 } from "mathjs";
-import { Interval } from "./boxed_path_hull";
-import { point_dist } from "./makerjs_tools";
+import { Interval } from "./segmented_hull";
 
 export function pythag_h_a(h: number, a: number): number {
   return sqrt(h * h - a * a);
