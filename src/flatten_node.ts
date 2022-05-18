@@ -125,8 +125,8 @@ export class FlattenNode {
     }
 
     append_segment(points: Point2D[], seg_idx: number, bulkheads: Set<number>) {
-        this.upper_nodes.push(points[this.draw_up ? points.length - 1 : 0]);
-        this.lower_nodes.push(points[this.draw_up ? 0 : points.length - 1]);
+        this.upper_nodes.push(points[!this.draw_up ? points.length - 1 : 0]);
+        this.lower_nodes.push(points[!this.draw_up ? 0 : points.length - 1]);
 
         if (bulkheads.has(seg_idx)) {
             this.bulkheads.push(points);
@@ -162,8 +162,8 @@ export class FlattenNode {
             bezier_b,
             this.draw_up,
             this.reference_point,
-            !this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
-            !this.draw_up
+            this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
+            this.draw_up
         );
 
         this.start = point_path_to_puzzle_teeth(
@@ -184,10 +184,10 @@ export class FlattenNode {
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
             bezier_a = this.bound_segment_with_flatten_node(segments[i]);
 
-            this.draw_up_ref_dir = !this.draw_up
+            this.draw_up_ref_dir = this.draw_up
                 ? flattened.f1f4_dir
                 : flattened.fnfn_less1_dir;
-            this.draw_down_ref_dir = !this.draw_up
+            this.draw_down_ref_dir = this.draw_up
                 ? flattened.fnfn_less1_dir
                 : flattened.f1f4_dir;
 
@@ -196,8 +196,8 @@ export class FlattenNode {
                 bezier_b,
                 this.draw_up,
                 flattened.a_flat[0],
-                !this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
-                !this.draw_up
+                this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
+                this.draw_up
             );
 
             this.append_segment(flattened.a_flat, i, bulkheads);
