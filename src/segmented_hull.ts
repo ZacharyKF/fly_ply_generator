@@ -8,9 +8,6 @@ import { HullSegment } from "./rational_bezier_hull";
 import { circle_center } from "./rational_math";
 import { Point2D, Point3D } from "./rational_point";
 
-const LEE_COLOR = "blue";
-const WIND_COLOR = "purple";
-
 export interface HullCurve {
     start_seg_idx: number;
     end_seg_idx: number;
@@ -332,7 +329,7 @@ export class SegmentedHull {
 
             // We want to process the curves in order from closes to bow back
             let bezier_sort = (a: HullCurve, b: HullCurve) => {
-                return b.end_seg_idx - a.end_seg_idx;
+                return a.end_seg_idx - b.end_seg_idx;
             };
             let sorted_curves = curves.sort(bezier_sort);
 
@@ -384,22 +381,22 @@ export class SegmentedHull {
 
                 // Keep track of how the direction is flipping, the end of one node is the start of another (until the leaf
                 //  nodes, which ACTUALLY end at 0)
-                let new_upper = new FlattenNode(
+                let new_draw_down = new FlattenNode(
                     parent_node.prefix,
                     parent_node.depth + 1,
                     parent_node.children.length,
                     next_curve.end_seg_idx,
                     false,
                     parent_node.upper_nodes[parent_node.upper_nodes.length - 1],
-                    0, // Won't actually be used
+                    new_dirs.draw_up_ref_dir,
                     new_dirs.draw_down_ref_dir,
                     parent_node.upper_bound,
                     curve_bound
                 );
-                parent_node.children.push(new_upper);
-                nodes_to_consider.push(new_upper);
+                parent_node.children.push(new_draw_down);
+                nodes_to_consider.push(new_draw_down);
 
-                let new_lower = new FlattenNode(
+                let new_draw_up = new FlattenNode(
                     parent_node.prefix,
                     parent_node.depth + 1,
                     parent_node.children.length,
@@ -407,12 +404,13 @@ export class SegmentedHull {
                     true,
                     parent_node.lower_nodes[parent_node.lower_nodes.length - 1],
                     new_dirs.draw_up_ref_dir,
-                    0, // Won't actually be used
+                    new_dirs.draw_down_ref_dir,
                     curve_bound,
                     parent_node.lower_bound
                 );
-                parent_node.children.push(new_lower);
-                nodes_to_consider.push(new_lower);
+                parent_node.children.push(new_draw_up);
+                nodes_to_consider.push(new_draw_up);
+
             }
 
             nodes_to_consider.forEach((node) => {

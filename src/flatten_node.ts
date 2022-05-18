@@ -3,7 +3,7 @@ import { pi } from "mathjs";
 import { points_to_imodel, point_path_to_puzzle_teeth } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
 import { HullSegment } from "./rational_bezier_hull";
-import { middle_value, unroll_point_set, unroll_unflat_flat } from "./rational_math";
+import { middle_value, unroll_point_set } from "./rational_math";
 import { Point2D, Point3D } from "./rational_point";
 
 export class FlattenNode {
@@ -141,8 +141,14 @@ export class FlattenNode {
         bulkheads: Set<number>
     ): FillResult {
         console.log("\n==== FILLING NODE ====")
-        console.log(this.start_seg_idx, segments[this.start_seg_idx].dist)
-        console.log(idx_end, segments[idx_end].dist)
+        console.log(
+            "\nStart Segment            : ", this.start_seg_idx,
+            "\nStart Segment Distance   : ", segments[this.start_seg_idx].dist,
+            "\nEnd Segment              : ", idx_end,
+            "\nEnd Segment Distance     : ", segments[idx_end].dist,
+            "\nT Upper Start            : ", this.upper_bound(segments[this.start_seg_idx].dist),
+            "\nT Lower Start            : ", this.lower_bound(segments[this.start_seg_idx].dist),            
+        );
 
         let bezier_b = this.bound_segment_with_flatten_node(
             segments[this.start_seg_idx]
@@ -156,8 +162,8 @@ export class FlattenNode {
             bezier_b,
             this.draw_up,
             this.reference_point,
-            this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
-            this.draw_up
+            !this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
+            !this.draw_up
         );
 
         this.start = point_path_to_puzzle_teeth(
@@ -178,26 +184,10 @@ export class FlattenNode {
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
             bezier_a = this.bound_segment_with_flatten_node(segments[i]);
 
-            // flattened = unroll_unflat_flat(
-            //     bezier_a,
-            //     bezier_b,
-            //     flattened.a_flat,
-            //     this.draw_up,
-            //     this.draw_up
-            // );
-
-            // console.log("\n==== REFERENCE DIRECTIONS ====")
-            // console.log(
-            //     "\nDraw Down Ref:   " + this.draw_down_ref_dir * 180/pi,
-            //     "\nDraw Up Ref:     " + this.draw_up_ref_dir * 180/pi,
-            //     "\nf1f4_dir:        " + flattened.f1f4_dir * 180/pi,
-            //     "\nfnfn_less1_dir:  " + flattened.fnfn_less1_dir * 180/pi,
-            // );
-
-            this.draw_up_ref_dir = this.draw_up
+            this.draw_up_ref_dir = !this.draw_up
                 ? flattened.f1f4_dir
                 : flattened.fnfn_less1_dir;
-            this.draw_down_ref_dir = this.draw_up
+            this.draw_down_ref_dir = !this.draw_up
                 ? flattened.fnfn_less1_dir
                 : flattened.f1f4_dir;
 
@@ -206,8 +196,8 @@ export class FlattenNode {
                 bezier_b,
                 this.draw_up,
                 flattened.a_flat[0],
-                this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
-                this.draw_up
+                !this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
+                !this.draw_up
             );
 
             this.append_segment(flattened.a_flat, i, bulkheads);
@@ -216,12 +206,8 @@ export class FlattenNode {
         }
 
         return {
-            draw_up_ref_dir: this.draw_up
-                ? flattened.f1f4_dir
-                : flattened.fnfn_less1_dir,
-            draw_down_ref_dir: this.draw_up
-                ? flattened.fnfn_less1_dir
-                : flattened.f1f4_dir,
+            draw_up_ref_dir: this.draw_up_ref_dir,
+            draw_down_ref_dir: this.draw_down_ref_dir,
         };
     }
 }

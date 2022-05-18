@@ -33,8 +33,8 @@ export interface DrawableHull {
 
 // Drawing parameters
 let scale_up = 100;
-let slices = 100;
-let segments_drawn = 100;
+let slices = 300;
+let segments_drawn = 300;
 let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;

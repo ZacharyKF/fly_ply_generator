@@ -64,8 +64,8 @@ export function colinear_filter_points(
 
         for (let i = 1; i < datum.length - 1; i++) {
             let vec_a = datum[i + 1].sub(datum[i]);
-            let vec_b = datum[i - 1].sub(datum[i]);
-            let dot = abs(vec_a.dot(vec_b));
+            let vec_b = datum[i].sub(datum[i - 1]);
+            let dot = vec_a.dot(vec_b);
             if (dot > tolerance) {
                 to_remove.push(i);
 
@@ -83,10 +83,7 @@ export function points_to_imodel(
     loop: boolean,
     points: Point[]
 ): IModel {
-    const points_clean: IPoint[] = colinear_filter_points(points, 3, 0.95).map(
-        (p) => p.to_ipoint(dimension)
-    );
-    return new models.ConnectTheDots(loop, points_clean);
+    return new models.ConnectTheDots(loop, points.map(p => p.to_ipoint(dimension)));
 }
 
 export const colours: string[] = [
