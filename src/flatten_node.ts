@@ -126,9 +126,24 @@ export class FlattenNode {
         return segment.hull_curve.split_segment(lower_bound, upper_bound);
     }
 
-    append_segment(points: Point2D[], seg_idx: number, bulkheads: Set<number>) {
-        this.upper_nodes.push(points[this.draw_up ? points.length - 1 : 0]);
-        this.lower_nodes.push(points[this.draw_up ? 0 : points.length - 1]);
+    append_segment(
+        points: Point2D[],
+        f1f4_dir: number,
+        fnfn_less1_dir: number,
+        seg_idx: number,
+        bulkheads: Set<number>
+    ) {
+        if (this.draw_up) {
+            this.upper_nodes.push(points[points.length - 1]);
+            this.lower_nodes.push(points[0]);
+            this.draw_up_ref_dir = f1f4_dir;
+            this.draw_down_ref_dir = fnfn_less1_dir;
+        } else {
+            this.upper_nodes.push(points[0]);
+            this.lower_nodes.push(points[points.length - 1]);
+            this.draw_up_ref_dir = fnfn_less1_dir;
+            this.draw_down_ref_dir = f1f4_dir;
+        }
 
         if (bulkheads.has(seg_idx)) {
             this.bulkheads.push(points);
@@ -184,13 +199,15 @@ export class FlattenNode {
         }
 
         // Otherwise Fill our children recursively
-        this.children.forEach(child => child.try_split_recursive(
-            segments,
-            curves_copy,
-            puzzle_tooth_width,
-            puzzle_tooth_angle,
-            bulk_head_segs,
-        ));
+        this.children.forEach((child) =>
+            child.try_split_recursive(
+                segments,
+                curves_copy,
+                puzzle_tooth_width,
+                puzzle_tooth_angle,
+                bulk_head_segs
+            )
+        );
     }
 
     // Try to split the node with a given HullCurve. Either return an arry
@@ -305,7 +322,7 @@ export class FlattenNode {
             !this.draw_up,
             this.reference_point,
             this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
-            this.draw_up
+            !this.draw_up
         );
 
         this.start = point_path_to_puzzle_teeth(
@@ -314,9 +331,17 @@ export class FlattenNode {
             puzzle_tooth_angle
         );
 
-        this.append_segment(flattened.b_flat, this.start_seg_idx, bulkheads);
+        this.append_segment(
+            flattened.b_flat,
+            flattened.f1f4_dir,
+            flattened.fnfn_less1_dir,
+            this.start_seg_idx,
+            bulkheads
+        );
         this.append_segment(
             flattened.a_flat,
+            flattened.f1f4_dir,
+            flattened.fnfn_less1_dir,
             this.start_seg_idx - 1,
             bulkheads
         );
@@ -326,23 +351,22 @@ export class FlattenNode {
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
             bezier_a = this.bound_segment_with_flatten_node(segments[i]);
 
-            this.draw_up_ref_dir = this.draw_up
-                ? flattened.f1f4_dir
-                : flattened.fnfn_less1_dir;
-            this.draw_down_ref_dir = this.draw_up
-                ? flattened.fnfn_less1_dir
-                : flattened.f1f4_dir;
-
             flattened = unroll_point_set(
                 bezier_a,
                 bezier_b,
                 !this.draw_up,
                 flattened.a_flat[0],
                 this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
-                this.draw_up
+                !this.draw_up
             );
 
-            this.append_segment(flattened.a_flat, i, bulkheads);
+            this.append_segment(
+                flattened.a_flat,
+                flattened.f1f4_dir,
+                flattened.fnfn_less1_dir,
+                i,
+                bulkheads
+            );
 
             bezier_b = bezier_a;
         }
