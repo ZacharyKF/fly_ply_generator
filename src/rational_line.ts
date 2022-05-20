@@ -1,17 +1,17 @@
 import { IPath, paths } from "makerjs";
 import { RationalPath } from "./rational_path";
-import { Point3D } from "./rational_point";
+import { Point } from "./rational_point";
 
-export class RationalLine implements RationalPath {
-    a: Point3D;
-    b: Point3D;
-    vec_ab: Point3D;
-    length: number;
+export class RationalLine<P extends Point> implements RationalPath<P> {
+    readonly a: P;
+    readonly b: P;
+    readonly vec_ab: P;
+    readonly length: number;
 
-    constructor(a: Point3D, b: Point3D) {
+    constructor(a: P, b: P) {
         this.a = a;
         this.b = b;
-        this.vec_ab = b.sub(a);
+        this.vec_ab = <P>b.sub(a);
         this.length = this.vec_ab.magnitude;
     }
 
@@ -22,7 +22,7 @@ export class RationalLine implements RationalPath {
         );
     }
 
-    dist_to_point(point: Point3D): number {
+    dist_to_point(point: P): number {
         // First we need the co-vector
         let vec_ap = point.sub(this.a);
         let co_vec = this.vec_ab.co_vec(vec_ap);

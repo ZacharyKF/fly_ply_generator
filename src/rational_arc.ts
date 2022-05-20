@@ -1,30 +1,30 @@
 import { IPath, paths } from "makerjs";
 import { abs, pi } from "mathjs";
 import { RationalPath } from "./rational_path";
-import { Point3D } from "./rational_point";
+import { Point } from "./rational_point";
 
 const tau = 2 * pi;
-export class RationalArc implements RationalPath {
-    a: Point3D;
-    b: Point3D;
-    c: Point3D;
-    center: Point3D;
-    radius: number;
-    vec_a: Point3D;
-    vec_b: Point3D;
-    vec_c: Point3D;
-    angle: number;
-    length: number;
+export class RationalArc<P extends Point> implements RationalPath<P> {
+    readonly a: P;
+    readonly b: P;
+    readonly c: P;
+    readonly center: P;
+    readonly radius: number;
+    readonly vec_a: P;
+    readonly vec_b: P;
+    readonly vec_c: P;
+    readonly angle: number;
+    readonly length: number;
 
-    constructor(center: Point3D, a: Point3D, b: Point3D, c: Point3D, radius: number) {
+    constructor(center: P, a: P, b: P, c: P, radius: number) {
         this.a = a;
         this.b = b;
         this.c = c;
         this.center = center;
         this.radius = radius;
-        this.vec_a = a.sub(center);
-        this.vec_b = b.sub(center);
-        this.vec_c = c.sub(center);
+        this.vec_a = <P>a.sub(center);
+        this.vec_b = <P>b.sub(center);
+        this.vec_c = <P>c.sub(center);
         this.angle = this.vec_a.angle(this.vec_c);
         this.length = tau * radius * (this.angle / tau);
     }
@@ -49,7 +49,7 @@ export class RationalArc implements RationalPath {
         }
     }
 
-    dist_to_point(point: Point3D): number {
+    dist_to_point(point: P): number {
         // Two cases, one if it's inside our arc, one if it's outside
         let vec_p = point.sub(this.center);
         let angle_pa = vec_p.angle(this.vec_a);

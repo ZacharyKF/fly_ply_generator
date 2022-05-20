@@ -2,6 +2,14 @@ import { IPoint } from "makerjs";
 import { abs, acos, cos, max, min, sin, sqrt } from "mathjs";
 
 export interface Point {
+    magnitude: number;
+    x: number;
+    y: number;
+    w: number;
+
+    dimm_dist_f(dimm: number, dist: number): number;
+    zero(): Point;
+    cross_mag(other: Point): number;
     add(other: Point): Point;
     sub(other: Point): Point;
     dist(other: Point): number;
@@ -41,6 +49,25 @@ export class Point3D implements Point {
         this.z = z;
         this.w = w;
         this.magnitude = sqrt(x * x + y * y + z * z);
+    }
+
+    dimm_dist_f(dimm: number, dist: number): number {
+        switch (dimm) {
+            case 2:
+                return this.z - dist;
+            case 1:
+                return this.y - dist;
+            default:
+                return this.x - dist;
+        }
+    }
+
+    zero(): Point3D {
+        return Point3D.Zero;
+    }
+
+    cross_mag(other: Point3D): number {
+        return this.cross(other).magnitude;
     }
 
     add(other: Point3D): Point3D {
@@ -250,6 +277,24 @@ export class Point2D implements Point {
         this.y = y;
         this.w = w;
         this.magnitude = sqrt(x * x + y * y);
+    }
+
+    dimm_dist_f(dimm: number, dist: number): number {
+        switch (dimm) {
+            case 1:
+                return this.y - dist;
+            default:
+                return this.x - dist;
+        }
+    }
+
+
+    zero(): Point {
+        return Point2D.Zero;
+    }
+
+    cross_mag(other: Point2D): number {
+        return this.cross(other);
     }
 
     add(other: Point2D): Point2D {

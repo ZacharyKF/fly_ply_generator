@@ -13,14 +13,14 @@ import {
     transpose,
 } from "mathjs";
 import { binomial } from "./math";
-import { Point3D } from "./rational_point";
+import { Point, Point2D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
 
 const RESOLUTION = 1000;
 const T_STEP = 1.0 / RESOLUTION;
 
-export interface RationalLut {
-    p: Point3D;
+export interface RationalLut<P extends Point> {
+    p: P;
     t: number;
     d: number;
     angle: number;
@@ -28,12 +28,12 @@ export interface RationalLut {
     aa: number;
 }
 
-export class RationalBezier {
-    controls: Point3D[];
-    lut: RationalLut[];
+export class RationalBezier<P extends Point> {
+    controls: P[];
+    lut: RationalLut<P>[];
     length: number;
 
-    constructor(controls: Point3D[]) {
+    constructor(controls: P[]) {
         this.controls = controls;
 
         // Before constructing the lut we want to get an estimate of the length
@@ -61,11 +61,11 @@ export class RationalBezier {
         /**
          * The loop here is pretty simple. We hold on to the last point, we take
          *  a guess at where the next point is. Then we linearily interpolate
-         *  three times to try and fit at the specified distance. The points
-         *  only really need to be the "closest" to a particular distance.
+         *  to try and fit at the specified distance. The points only really
+         *  need to be the "closest" to a particular distance.
          */
         const guess_resolution = length_step / 3;
-        while (t_current <= 1.0) {
+        while (t_current < 1.0) {
             let d_remaining = length_current - lut_last.d;
             let p_guess = this.get_internal(t_current);
             let d_guess = p_guess.dist(lut_last.p);
@@ -99,7 +99,18 @@ export class RationalBezier {
             length_current += length_step;
             lut_last = new_lut;
         }
-        this.length = lut_last.d;
+
+        // We're okay with a bit of distance error at the end
+        this.lut.pop();
+        this.lut.push({
+            p: controls[controls.length - 1],
+            t: 1,
+            d: controls[controls.length - 1].dist(lut_last.p) + lut_last.d,
+            angle: 0,
+            a: 0,
+            aa: 0,
+        });
+        this.length = this.lut[this.lut.length - 1].d;
 
         // Now we can augment our lut with angle informatio
         for (let i = 1; i < this.lut.length - 1; i++) {
@@ -135,14 +146,14 @@ export class RationalBezier {
     map_t(u: number): number {
         // Get the LUT AFTER the desired distance, then we linearly interpolate
         //  forwards from the previous LUT
-        const lut_id = ceil(u * (this.lut.length - 1));
+        const lut_id = max(1, ceil(u * (this.lut.length - 1)));
         const d_diff = this.lut[lut_id].d - this.lut[lut_id - 1].d;
         const t_diff = this.lut[lut_id].t - this.lut[lut_id - 1].t;
         const length_diff = u * this.length - this.lut[lut_id - 1].d;
         return t_diff * (length_diff / d_diff) + this.lut[lut_id - 1].t;
     }
 
-    get(u: number): Point3D {
+    get(u: number): P {
         if (u <= 0) {
             return this.controls[0];
         } else if (u >= 1) {
@@ -151,12 +162,16 @@ export class RationalBezier {
         return this.get_internal(this.map_t(u));
     }
 
-    get_struts(t: number): Point3D[][] {
+    get_struts(t: number): P[][] {
         return this.get_struts_internal(t, 1 - t, this.controls, []);
     }
 
-    get_struts_internal(t:number, s: number, level: Point3D[], struts: Point3D[][]): Point3D[][] {
-        
+    get_struts_internal(
+        t: number,
+        s: number,
+        level: P[],
+        struts: P[][]
+    ): P[][] {
         // No matter what, add the current level to the return
         struts.push(level);
 
@@ -165,23 +180,23 @@ export class RationalBezier {
             return struts;
         }
 
-        // Otherwise we need to calculate the new points, there will be 
+        // Otherwise we need to calculate the new points, there will be
         //  level.length - 1 new points
-        let new_points: Point3D[] = new Array(level.length - 1);
-        for(let i = 0; i < level.length - 1; i++) {
-            const weight = (level[i].w * s) + (level[i + 1].w * t);
-            const left = level[i].mul(s * level[i].w / weight);
-            const right = level[i + 1].mul(t * level[i + 1].w / weight);
+        let new_points: P[] = new Array(level.length - 1);
+        for (let i = 0; i < level.length - 1; i++) {
+            const weight = level[i].w * s + level[i + 1].w * t;
+            const left = level[i].mul((s * level[i].w) / weight);
+            const right = level[i + 1].mul((t * level[i + 1].w) / weight);
             const new_point = right.add(left);
             new_point.w = weight;
-            new_points[i] = new_point;
+            new_points[i] = <P>new_point;
         }
 
         return this.get_struts_internal(t, s, new_points, struts);
     }
 
     // Use the bernstein polynomial method to find the point
-    get_internal(t: number): Point3D {
+    get_internal(t: number): P {
         if (t <= 0) {
             return this.controls[0];
         } else if (t >= 1) {
@@ -190,21 +205,21 @@ export class RationalBezier {
         let n = this.controls.length - 1;
         let s = 1 - t;
 
-        let init_point = new Point3D(0, 0, 0, 0);
+        let init_point = <P>this.controls[0].zero();
         let denominator = 0;
 
         for (let i = 0; i < this.controls.length; i++) {
             let control = this.controls[i];
             let multiplier = control.w * s ** (n - i) * t ** i * binomial(n, i);
             denominator += multiplier;
-            init_point = init_point.add(control.mul(multiplier));
+            init_point = <P>init_point.add(control.mul(multiplier));
         }
 
-        return init_point.div(denominator);
+        return <P>init_point.div(denominator);
     }
 
     // Converts the lut to a short list of 100 points
-    as_list(): Point3D[] {
+    as_list(): P[] {
         return this.lut.filter((_, idx) => idx % 9 == 0).map((l) => l.p);
     }
 
@@ -216,7 +231,7 @@ export class RationalBezier {
     }
 
     // Lut binary search method, a will be the lower lut method, b will be th
-    find_in_lut(f: (p: Point3D) => number): RationalLut {
+    find_in_lut(f: (p: P) => number): RationalLut<P> {
         let low = 0;
         let mid = 0;
         let high = this.lut.length - 1;
@@ -235,13 +250,62 @@ export class RationalBezier {
         return this.lut[mid];
     }
 
+    // Quartenary search for lowest value
+    find_smallest_on_curve(
+        t_min: number,
+        t_max: number,
+        f: (p: P) => number
+    ): {
+        p: P;
+        t: number;
+    } {
+        let low = t_min;
+        let high = t_max;
+        let mid_2 = (high + low)/2;
+        let p_2 = this.get(mid_2);
+        let d_2 = f(p_2);
+        let safety = 0;
+
+        do {
+            const step = (high - low)/4;
+            const mid_1 = low + step;
+            const p_1 = this.get(mid_1);
+            const d_1 = f(p_1);
+            const mid_3 = high - step;
+            const p_3 = this.get(mid_3);
+            const d_3 = f(p_3);
+
+            if (d_1 < d_2 && d_1 < d_3) {
+                // low = low
+                high = mid_2; 
+                mid_2 = mid_1;
+                p_2 = p_1;
+                d_2 = d_1;
+            } else if (d_2 < d_3) {
+                low = mid_2;
+                // high = high
+                mid_2 = mid_3;
+                p_2 = p_3;
+                d_2 = d_3;
+            } else {
+                low = mid_1;
+                high = mid_3;
+            }
+        } while(d_2 > 0 && safety++ < 30);
+
+        return {
+            p: p_2,
+            t: mid_2,
+        }
+    }
+
     // Binary search with safety for iterating on curve
     find_on_curve(
         t_min: number,
         t_max: number,
-        f: (p: Point3D) => number
+        f: (p: P) => number
     ): {
-        p: Point3D;
+        p: P;
         t: number;
     } {
         let low = t_min;
@@ -271,18 +335,11 @@ export class RationalBezier {
         dimension: number,
         distance: number
     ): {
-        p: Point3D;
+        p: P;
         t: number;
     } {
-        let linear_dist = (l: Point3D) => {
-            switch (dimension) {
-                case 2:
-                    return l.z - distance;
-                case 1:
-                    return l.y - distance;
-                default:
-                    return l.x - distance;
-            }
+        let linear_dist = (l: P) => {
+            return l.dimm_dist_f(dimension, distance);
         };
 
         let closest_lut = this.find_in_lut(linear_dist);
@@ -320,7 +377,7 @@ export class RationalBezier {
         variance_tolerance: number,
         min_segments: number,
         max_segments: number
-    ): RationalSegment[] {
+    ): RationalSegment<P>[] {
         let min_id = 1;
         let max_id = this.lut.length - 2;
         let num_segs = min_segments;
@@ -328,7 +385,7 @@ export class RationalBezier {
         // We'll build our segments from these eventually
         let divisors: number[];
         let total_error = 0;
-        let segments: RationalSegment[] = [];
+        let segments: RationalSegment<P>[] = [];
 
         do {
             // Initializing the divisors
@@ -380,7 +437,7 @@ export class RationalBezier {
             total_error = 0;
             segments = [];
             for (let i = 0; i < divisors.length - 1; i++) {
-                let new_seg = new RationalSegment(
+                let new_seg = new RationalSegment<P>(
                     this,
                     divisors[i],
                     divisors[i + 1]
@@ -392,6 +449,16 @@ export class RationalBezier {
             //  add more segments to decrease the variance
         } while (total_error > variance_tolerance && num_segs++ < max_segments);
 
+        // console.log("\n==== BUILT SEGMENTS ====")
+        // for(let i = 0; i < divisors.length - 1; i++) {
+        //     console.log(
+        //         "\nSEGMENT =>",
+        //         "\nDivisor A    : ", this.lut[divisors[i]].p,
+        //         "\nDivisor B    : ", this.lut[divisors[i + 1]].p,
+        //         "\nSegment A    : ", this.get(segments[i].start_t),
+        //         "\nSegment B    : ", this.get(segments[i].end_t),
+        //     );
+        // }
         return segments;
     }
 
@@ -402,8 +469,8 @@ export class RationalBezier {
         x: number;
         y: number;
     } {
-        let sum = this.lut[id_b].a - this.lut[id_a].a;
-        let n = id_b - id_a;
+        const sum = this.lut[id_b].a - this.lut[id_a].a;
+        const n = id_b - id_a;
         return {
             x: (id_b + id_a) / 2,
             y: sum / n,
@@ -411,22 +478,22 @@ export class RationalBezier {
     }
 
     private calc_dist(id: number, p: { x: number; y: number }): number {
-        let lut = this.lut[id];
-        let d_x = id - p.x;
-        let d_y = lut.angle - p.y;
+        const lut = this.lut[id];
+        const d_x = id - p.x;
+        const d_y = lut.angle - p.y;
         return sqrt(d_x * d_x + (d_y * d_y) / 2);
     }
 
     split(t_split: number): {
-        upper: RationalBezier;
-        lower: RationalBezier;
+        upper: RationalBezier<P>;
+        lower: RationalBezier<P>;
     } {
-        let struts = this.get_struts(t_split);
-        let left: Point3D[] = [];
-        let right: Point3D[] = [];
+        const struts = this.get_struts(t_split);
+        const left: P[] = [];
+        const right: P[] = [];
 
-        for(let i = 0; i < struts.length; i ++){
-            let level = struts[i];
+        for (let i = 0; i < struts.length; i++) {
+            const level = struts[i];
             left.push(level[0]);
             right.unshift(level[level.length - 1]);
         }
@@ -438,7 +505,7 @@ export class RationalBezier {
     }
 
     // We're going to solve this numerically
-    split_segment(t_lower: number, t_upper: number): RationalBezier {
+    split_segment(t_lower: number, t_upper: number): RationalBezier<P> {
         let t_up = max(t_lower, t_upper);
         let t_down = min(t_lower, t_upper);
 
@@ -456,21 +523,24 @@ export class RationalBezier {
 
         let curve_upper = this.split(t_down).upper;
         let p_split_next = this.get(t_up);
-        let t_split_next = curve_upper.find_on_curve(0, 1, (p) =>
+        let t_split_next = curve_upper.find_smallest_on_curve(0, 1, (p) =>
             p.dist(p_split_next)
         ).t;
         let curve_final = curve_upper.split(t_split_next).lower;
         return curve_final;
     }
 
-    static fit_to_points(points: Point3D[], order: number): RationalBezier {
+    static fit_to_points(
+        points: Point2D[],
+        order: number
+    ): RationalBezier<Point2D> {
         let controls = RationalBezier.fit_controls(points);
         controls = RationalBezier.reduce_order(controls, order);
         return new RationalBezier(controls);
     }
 
-    static fit_controls(points: Point3D[]): Point3D[] {
-        let controls: Point3D[] = [];
+    static fit_controls(points: Point2D[]): Point2D[] {
+        let controls: Point2D[] = [];
 
         // This is just a straight-ish line so slap the midpoint in the middle
         if (points.length == 2 || points.length > 4) {
@@ -517,7 +587,7 @@ export class RationalBezier {
         let y: number[][] = <number[][]>cy.toArray();
 
         let bezier_points = x.map((row, idx) => {
-            return new Point3D(row[0], y[idx][0], 0, 0);
+            return new Point2D(row[0], y[idx][0], 0);
         });
 
         // Re-adjust the start and end to prevent drift
@@ -527,7 +597,7 @@ export class RationalBezier {
         return bezier_points;
     }
 
-    static calculate_t_vals(datum: Point3D[]): number[] {
+    static calculate_t_vals(datum: Point2D[]): number[] {
         const D = [0];
         for (let i = 1; i < datum.length; i++) {
             let dist = datum[0].dist(datum[1]);
@@ -554,13 +624,13 @@ export class RationalBezier {
         return { T, Tt };
     }
 
-    static reduce_order(controls: Point3D[], order: number): Point3D[] {
+    static reduce_order(controls: Point2D[], order: number): Point2D[] {
         if (controls.length - 1 <= order) {
             return controls;
         }
 
-        let new_controls: Point3D[] = new Array(order + 1);
-        new_controls.fill(Point3D.Zero);
+        let new_controls: Point2D[] = new Array(order + 1);
+        new_controls.fill(Point2D.Zero);
         let n = controls.length - 1;
         let m = new_controls.length - 1;
         let k = 1;
@@ -747,7 +817,7 @@ export class RationalBezier {
             let n = controls.length - 1;
             let s = 1 - t;
 
-            let init_point = new Point3D(0, 0, 0, 0);
+            let init_point = new Point2D(0, 0, 0);
             let denominator = 0;
 
             for (let j = 0; j < controls.length; j++) {
@@ -879,7 +949,7 @@ export class RationalBezier {
         //                - ----- x[j - 1] t     [i].
         //                    j
 
-        let u: Point3D[] = new Array(m - k - l + 1);
+        let u: Point2D[] = new Array(m - k - l + 1);
         let t: number[] = new Array(m - k - l + 1);
         u[0] = new_controls[k];
         t[0] = 1;

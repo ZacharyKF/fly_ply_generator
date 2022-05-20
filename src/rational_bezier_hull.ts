@@ -7,19 +7,19 @@ import { abs, floor } from "mathjs";
 import { DrawableHull, FlattenResult } from "./boxed_hull_test";
 import { color_dark } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
-import { Point3D } from "./rational_point";
+import { Point2D, Point3D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
 import { SegmentedHull } from "./segmented_hull";
 
 export interface HullSegment {
     dist: number;
-    hull_curve: RationalBezier;
-    curve_segments: RationalSegment[];
+    hull_curve: RationalBezier<Point3D>;
+    curve_segments: RationalSegment<Point3D>[];
 }
 
 export class RationalBezierHull implements DrawableHull {
-    wind_beziers: RationalBezier[];
-    lee_beziers: RationalBezier[];
+    wind_beziers: RationalBezier<Point3D>[];
+    lee_beziers: RationalBezier<Point3D>[];
     hull_segments_lee: HullSegment[];
     hull_segments_wind: HullSegment[];
     internal_hull: SegmentedHull;
@@ -34,9 +34,11 @@ export class RationalBezierHull implements DrawableHull {
         curve_colinearity_tolerance: number
     ) {
         this.wind_beziers = wind_curves.map(
-            (curve) => new RationalBezier(curve)
+            (curve) => new RationalBezier<Point3D>(curve)
         );
-        this.lee_beziers = lee_curves.map((curve) => new RationalBezier(curve));
+        this.lee_beziers = lee_curves.map(
+            (curve) => new RationalBezier<Point3D>(curve)
+        );
 
         this.hull_segments_lee = [];
         this.hull_segments_wind = [];
@@ -72,10 +74,13 @@ export class RationalBezierHull implements DrawableHull {
             curve_colinearity_tolerance
         );
     }
+    draw_hull_curves(dimension: number, lee: boolean, wind: boolean): IModel {
+        return this.internal_hull.draw_hull_curves(dimension, lee, wind);
+    }
 
     make_segment(
         dist: number,
-        curves: RationalBezier[],
+        curves: RationalBezier<Point3D>[],
         min_segments: number,
         max_segments: number,
         variance_tolerance: number
@@ -84,7 +89,7 @@ export class RationalBezierHull implements DrawableHull {
             .map((c) => c.find_dimm_dist(0, dist))
             .map((l) => l.p.set_dimm(dist, 0));
 
-        const hull_curve = new RationalBezier(points);
+        const hull_curve = new RationalBezier<Point3D>(points);
 
         const curve_segments = hull_curve.find_segments(
             variance_tolerance,
@@ -104,7 +109,7 @@ export class RationalBezierHull implements DrawableHull {
     draw_main_curves(dimm: number): MakerJs.IModel {
         let add_curves_to_model = (
             model_map: IModelMap,
-            beziers: RationalBezier[]
+            beziers: RationalBezier<Point3D>[]
         ): IModelMap => {
             beziers
                 .map((b) => b.draw(dimm))

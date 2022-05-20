@@ -1,4 +1,4 @@
-import { IModelMap } from "makerjs";
+import { IModel, IModelMap } from "makerjs";
 import { abs, max, min, pi } from "mathjs";
 import { FlattenResult } from "./boxed_hull_test";
 import { FlattenNode } from "./flatten_node";
@@ -11,7 +11,7 @@ import { Point2D, Point3D } from "./rational_point";
 export interface HullCurve {
     start_seg_idx: number;
     end_seg_idx: number;
-    curve: RationalBezier;
+    curve: RationalBezier<Point2D>;
 }
 
 export interface Interval {
@@ -99,16 +99,14 @@ export class SegmentedHull {
             owned_offsets: CurveOffsetInterval[];
         }[] = [];
 
-        let prev_offset = offsets[0];
-
-        prev_offset.intervals.forEach((interval) => {
+        offsets[0].intervals.forEach((interval) => {
             curve_point_list.push({
                 last_idx: 0,
                 last_interval: interval,
                 owned_offsets: [
                     {
-                        dist: prev_offset.dist,
-                        seg_idx: prev_offset.seg_idx,
+                        dist: offsets[0].dist,
+                        seg_idx: offsets[0].seg_idx,
                         interval,
                     },
                 ],
@@ -148,8 +146,6 @@ export class SegmentedHull {
                     });
                 }
             }
-
-            prev_offset = offset;
         }
 
         curve_point_list.forEach((curve) => {
@@ -158,10 +154,10 @@ export class SegmentedHull {
             }
 
             // First we need to map the offsets to points
-            let points: { p: Point3D; idx: number }[] = curve.owned_offsets.map(
+            let points: { p: Point2D; idx: number }[] = curve.owned_offsets.map(
                 (offset, idx) => {
                     return {
-                        p: new Point3D(offset.dist, offset.interval.end, 0, 0),
+                        p: new Point2D(offset.dist, offset.interval.end, 1),
                         idx,
                     };
                 }
@@ -191,15 +187,15 @@ export class SegmentedHull {
                 );
 
                 if (test_center == undefined) {
-                  console.error("Could not find center");
-                  return;
+                    console.error("Could not find center");
+                    return;
                 } else {
-                  center = test_center;
+                    center = test_center;
                 }
             }
 
             // Our first list of valid points
-            let hull: { p: Point3D; idx: number }[] = [points[0]];
+            let hull: { p: Point2D; idx: number }[] = [points[0]];
 
             let idx = 0;
             let last_point = points[idx];
@@ -239,15 +235,15 @@ export class SegmentedHull {
         });
 
         let hull_curves: HullCurve[] = curve_point_list.map((curve) => {
-            let t_points: Point3D[] = curve.owned_offsets.map((offest) => {
-                return new Point3D(offest.dist, offest.interval.end, 0, 1);
+            let t_points: Point2D[] = curve.owned_offsets.map((offest) => {
+                return new Point2D(offest.dist, offest.interval.end, 1);
             });
-            
+
             return {
                 start_seg_idx: curve.owned_offsets[0].seg_idx,
                 end_seg_idx:
                     curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx,
-                curve:  RationalBezier.fit_to_points(t_points, 3),
+                curve: RationalBezier.fit_to_points(t_points, 3),
             };
         });
 
@@ -323,105 +319,23 @@ export class SegmentedHull {
             segments: HullSegment[],
             curves: HullCurve[]
         ) => {
-
-            console.log("\n==== Populating Nodes ====")
-            console.log("Number of curves: ", curves.length)
+            console.log("\n==== Populating Nodes ====");
+            console.log("Number of curves: ", curves.length);
 
             // We want to process the curves in order from closes to bow back
             let bezier_sort = (a: HullCurve, b: HullCurve) => {
-                return a.end_seg_idx - b.end_seg_idx;
+                return b.end_seg_idx - a.end_seg_idx;
             };
             let sorted_curves = curves.sort(bezier_sort);
 
-            // As we create children, their parents will be removed from here, and the new nodes will get added
-            let nodes_to_consider = [initial_node];
-
-            let try_index = 0;
-            while (sorted_curves.length > 0) {
-                // First try and find an appropriate bezier. If we can't find one there's likely something wrong
-                let next_curve = sorted_curves[try_index];
-                let bezier_t_end = next_curve.curve.get(1.0);
-                let bezier_end_t = bezier_t_end.y;
-                let bezier_end_x = bezier_t_end.x;
-                let node_index = nodes_to_consider.findIndex((node) => {
-                    return (
-                        bezier_end_t < node.upper_bound(bezier_end_x) &&
-                        bezier_end_t > node.lower_bound(bezier_end_x)
-                    );
-                });
-
-                // If for some reason no overlapping node is found, then we should increment the count. But it's likely that
-                //  this is a bug.
-                if (node_index < 0) {
-                    console.error(
-                        "Failed to find overlapping node for t: " + bezier_end_t
-                    );
-                    try_index += 1;
-                    continue;
-                }
-
-                // Ensure the arrays have their elements removed, and reset the index
-                sorted_curves.splice(try_index, 1);
-                let parent_node = nodes_to_consider.splice(node_index, 1)[0];
-                try_index = 0;
-
-                // This may seem counter intuitive, but it's just saying "the parent stops where it meets the curve"
-                let new_dirs = parent_node.fill(
-                    segments,
-                    next_curve.end_seg_idx,
-                    puzzle_tooth_width,
-                    puzzle_tooth_angle,
-                    bulk_head_segs
-                );
-
-                // With the parent node in hand we need to define our curve bound. This lets us find the curve t value at an
-                //  arbitrary point along the hull
-                let curve_bound = (dist: number) =>
-                    next_curve.curve.find_dimm_dist(0, dist).p.y;
-
-                // Keep track of how the direction is flipping, the end of one node is the start of another (until the leaf
-                //  nodes, which ACTUALLY end at 0)
-                let new_draw_down = new FlattenNode(
-                    parent_node.prefix,
-                    parent_node.depth + 1,
-                    parent_node.children.length,
-                    next_curve.end_seg_idx,
-                    true,
-                    parent_node.upper_nodes[parent_node.upper_nodes.length - 1],
-                    new_dirs.draw_up_ref_dir,
-                    new_dirs.draw_down_ref_dir,
-                    parent_node.upper_bound,
-                    curve_bound
-                );
-                parent_node.children.push(new_draw_down);
-                nodes_to_consider.push(new_draw_down);
-
-                let new_draw_up = new FlattenNode(
-                    parent_node.prefix,
-                    parent_node.depth + 1,
-                    parent_node.children.length,
-                    next_curve.end_seg_idx,
-                    false,
-                    parent_node.lower_nodes[parent_node.lower_nodes.length - 1],
-                    new_dirs.draw_up_ref_dir,
-                    new_dirs.draw_down_ref_dir,
-                    curve_bound,
-                    parent_node.lower_bound
-                );
-                parent_node.children.push(new_draw_up);
-                nodes_to_consider.push(new_draw_up);
-
-            }
-
-            nodes_to_consider.forEach((node) => {
-                node.fill(
-                    segments,
-                    0,
-                    puzzle_tooth_width,
-                    puzzle_tooth_angle,
-                    bulk_head_segs
-                );
-            });
+            // Try to fill our initial node recursively
+            initial_node.try_split_recursive(
+                segments,
+                sorted_curves,
+                puzzle_tooth_width,
+                puzzle_tooth_angle,
+                bulk_head_segs
+            );
         };
 
         let result: FlattenResult = {
@@ -483,5 +397,37 @@ export class SegmentedHull {
         }
 
         return result;
+    }
+
+    draw_hull_curves(dimension: number, lee: boolean, wind: boolean): IModel {
+        let draw_curves = (
+            curves: HullCurve[],
+            segments: HullSegment[]
+        ): IModel => {
+            const models: IModelMap = {};
+            curves.forEach((c, i) => {
+                const points: Point3D[] = [];
+                for (let j = c.end_seg_idx; j >= c.start_seg_idx; j--) {
+                    const seg = segments[j];
+                    const t = c.curve.find_dimm_dist(0, seg.dist).p.y;
+                    points.push(seg.hull_curve.get(t));
+                }
+                models["curve_" + i] = points_to_imodel(
+                    dimension,
+                    false,
+                    points
+                );
+            });
+            return { models };
+        };
+
+        return {
+            models: {
+                lee: lee ? draw_curves(this.lee_curves, this.lee_segments) : {},
+                wind: wind
+                    ? draw_curves(this.wind_curves, this.wind_segments)
+                    : {},
+            },
+        };
     }
 }

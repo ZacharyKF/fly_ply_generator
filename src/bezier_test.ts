@@ -7,7 +7,7 @@ import MakerJs, {
     IPoint,
     models,
 } from "makerjs";
-import { pi } from "mathjs";
+import { abs, pi } from "mathjs";
 import { color_naturally } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
 import { unroll_point_set } from "./rational_math";
@@ -72,6 +72,14 @@ dimm_maps["c_points"] = {
 };
 
 let unroll = unroll_point_set(rational_beziers[0], rational_beziers[1], false, Point2D.Zero, pi/2, false);
+
+let test_dist = 0;
+rational_beziers[0].lut.forEach(l => {
+    let t_actual = l.t;
+    let t_test = l.d/rational_beziers[0].length;
+    test_dist += abs(t_actual - rational_beziers[0].map_t(t_test));
+});
+console.log("DISTANCE TEST => ", test_dist)
 
 dimm_maps["a_points"] = {layer: "green", ...new models.ConnectTheDots(false, unroll.a_flat.map(p => p.to_ipoint(2)))};
 dimm_maps["b_points"] = {layer: "blue", ...new models.ConnectTheDots(false, unroll.b_flat.map(p => p.to_ipoint(2)))};

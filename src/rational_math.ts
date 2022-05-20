@@ -1,22 +1,22 @@
 import { IPoint } from "makerjs";
 import { abs, floor, min, sqrt } from "mathjs";
 import { RationalBezier } from "./rational_bezier";
-import { Point2D, Point3D } from "./rational_point";
+import { Point, Point2D, Point3D } from "./rational_point";
 
 // Taken from https://stackoverflow.com/questions/13977354/build-circle-from-3-points-in-3d-space-implementation-in-c-or-c
-export function circle_center(
-    a: Point3D,
-    b: Point3D,
-    c: Point3D
-): Point3D | undefined {
+export function circle_center<T extends Point>(
+    a: T,
+    b: T,
+    c: T
+): T | undefined {
     // triangle "edges"
     const t = b.sub(a);
     const u = c.sub(a);
     const v = c.sub(b);
 
     // triangle normal
-    const w = t.cross(u);
-    const wsl = w.magnitude * w.magnitude;
+    const w = t.cross_mag(u);
+    const wsl = w * w;
     if (wsl < 10e-14) return undefined; // area of the triangle is too small (you may additionally check the points for colinearity if you are paranoid)
 
     // helpers
@@ -36,7 +36,7 @@ export function circle_center(
     // Vector3d circCenter = p1 + (u*tt*(u*v) - t*uu*(t*v)) * iwsl2;
     // double   circRadius = sqrt(tt * uu * (v*v) * iwsl2*0.5);
     // Vector3d circAxis   = w / sqrt(wsl);
-    return center;
+    return <T>center;
 }
 
 // Stores our pascal expansions so we don't need to re-fetch them
@@ -76,8 +76,8 @@ const FLATTEN_RESOLUTION = 1000;
 // p1 is the flattened point from the top right of the bezier, everything is unrolled from this point, it returns the
 //  flattened point arrays of both
 export function unroll_point_set(
-    a: RationalBezier,
-    b: RationalBezier,
+    a: RationalBezier<Point3D>,
+    b: RationalBezier<Point3D>,
     reverse_points: boolean,
     f2_init: Point2D,
     f2f3_ang: number,

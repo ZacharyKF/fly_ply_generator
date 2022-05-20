@@ -4,7 +4,7 @@ import { Point, Point2D, Point3D } from "./rational_point";
 
 export function colinear_filter<T>(
     datum: T[],
-    get_point: (data: T) => Point3D,
+    get_point: (data: T) => Point,
     minimum: number,
     tolerance: number
 ): T[] {
@@ -12,7 +12,7 @@ export function colinear_filter<T>(
         return datum;
     }
 
-    let points: Point3D[] = datum.map(get_point);
+    let points: Point[] = datum.map(get_point);
 
     let to_remove: number[] = [];
     do {
