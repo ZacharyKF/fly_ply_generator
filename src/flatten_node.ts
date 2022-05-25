@@ -1,10 +1,9 @@
 import { IModel, IModelMap, model } from "makerjs";
 import { points_to_imodel, point_path_to_puzzle_teeth } from "./makerjs_tools";
-import { RationalBezier } from "./rational_bezier";
 import { HullSegment } from "./rational_bezier_hull";
 import { middle_value, unroll_point_set } from "./rational_math";
 import { Point2D, Point3D } from "./rational_point";
-import { HullCurve } from "./segmented_hull";
+import { HullCurve, Interval } from "./segmented_hull";
 
 export class FlattenNode {
     prefix: string;
@@ -118,12 +117,13 @@ export class FlattenNode {
         return points;
     }
 
-    bound_segment_with_flatten_node(
-        segment: HullSegment
-    ): RationalBezier<Point3D> {
-        let upper_bound = this.upper_bound(segment.dist);
-        let lower_bound = this.lower_bound(segment.dist);
-        return segment.hull_curve.split_segment(lower_bound, upper_bound);
+    get_bounded_interval(segment: HullSegment): Interval {
+        const start = this.lower_bound(segment.dist);
+        const end = this.upper_bound(segment.dist);
+        return {
+            start,
+            end,
+        }
     }
 
     append_segment(
@@ -309,16 +309,14 @@ export class FlattenNode {
             this.lower_bound(segments[this.start_seg_idx].dist)
         );
 
-        let bezier_b = this.bound_segment_with_flatten_node(
-            segments[this.start_seg_idx]
-        );
-        let bezier_a = this.bound_segment_with_flatten_node(
-            segments[this.start_seg_idx - 1]
-        );
+        let bounds_b = this.get_bounded_interval(segments[this.start_seg_idx]);
+        let bounds_a = this.get_bounded_interval(segments[this.start_seg_idx - 1]);
 
         let flattened = unroll_point_set(
-            bezier_a,
-            bezier_b,
+            segments[this.start_seg_idx - 1].hull_curve,
+            bounds_a,
+            segments[this.start_seg_idx].hull_curve,
+            bounds_b,
             !this.draw_up,
             this.reference_point,
             this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
@@ -346,14 +344,16 @@ export class FlattenNode {
             bulkheads
         );
 
-        bezier_b = bezier_a;
+        bounds_b = bounds_a;
 
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
-            bezier_a = this.bound_segment_with_flatten_node(segments[i]);
+            bounds_a = this.get_bounded_interval(segments[i]);
 
             flattened = unroll_point_set(
-                bezier_a,
-                bezier_b,
+                segments[i].hull_curve,
+                bounds_a,
+                segments[i + 1].hull_curve,
+                bounds_b,
                 !this.draw_up,
                 flattened.a_flat[0],
                 this.draw_up ? this.draw_up_ref_dir : this.draw_down_ref_dir,
@@ -368,7 +368,7 @@ export class FlattenNode {
                 bulkheads
             );
 
-            bezier_b = bezier_a;
+            bounds_b = bounds_a;
         }
 
         return {

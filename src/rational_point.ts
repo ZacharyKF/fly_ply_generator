@@ -155,9 +155,9 @@ export class Point3D implements Point {
         let dot =
             (this.x * other.x + this.y * other.y + this.z * other.z) /
             (this.magnitude * other.magnitude);
-        if (dot > 1) {
+        if (dot >= 1) {
             return 1;
-        } else if (dot < -1) {
+        } else if (dot <= -1) {
             return -1;
         } else {
             return dot;
@@ -263,9 +263,9 @@ export class Point3D implements Point {
 }
 
 export class Point2D implements Point {
-    static Zero = new Point2D(0, 0, 0);
-    static X = new Point2D(1, 0, 0);
-    static Y = new Point2D(0, 1, 0);
+    static Zero = new Point2D(0, 0, 1);
+    static X = new Point2D(1, 0, 1);
+    static Y = new Point2D(0, 1, 1);
 
     x: number;
     y: number;
@@ -417,7 +417,7 @@ export class Point2D implements Point {
         return new Point2D(
             this.x + radius * cos(angle),
             this.y + radius * sin(angle),
-            0
+            1
         );
     }
 

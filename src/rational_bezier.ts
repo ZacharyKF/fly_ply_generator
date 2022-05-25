@@ -130,14 +130,20 @@ export class RationalBezier<P extends Point> {
         }
 
         for (let i = 1; i < this.lut.length; i++) {
-            if (this.lut[i].p.dist(this.lut[i - 1].p) == 0) {
+            const prev = this.lut[i - 1];
+            const curr = this.lut[i];
+            if (curr.p.dist(prev.p) == 0 || curr.a == NaN || curr.aa == NaN) {
                 console.error("==== ERRANT LUT ====");
-                console.error(this.lut.length);
-                console.error(this.controls);
-                console.error("=> Prev");
-                console.error(this.lut[i - 1]);
-                console.error("=> Curr");
-                console.error(this.lut[i]);
+                console.error(
+                    "\nLUT length   => ",
+                    this.lut.length,
+                    "\nI            => ",
+                    i,
+                    "\nCurr         => ",
+                    curr,
+                    "\nPrev         => ",
+                    prev
+                );
                 throw new Error("Errant LUT");
             }
         }
@@ -261,13 +267,13 @@ export class RationalBezier<P extends Point> {
     } {
         let low = t_min;
         let high = t_max;
-        let mid_2 = (high + low)/2;
+        let mid_2 = (high + low) / 2;
         let p_2 = this.get(mid_2);
         let d_2 = f(p_2);
         let safety = 0;
 
         do {
-            const step = (high - low)/4;
+            const step = (high - low) / 4;
             const mid_1 = low + step;
             const p_1 = this.get(mid_1);
             const d_1 = f(p_1);
@@ -277,7 +283,7 @@ export class RationalBezier<P extends Point> {
 
             if (d_1 < d_2 && d_1 < d_3) {
                 // low = low
-                high = mid_2; 
+                high = mid_2;
                 mid_2 = mid_1;
                 p_2 = p_1;
                 d_2 = d_1;
@@ -291,12 +297,12 @@ export class RationalBezier<P extends Point> {
                 low = mid_1;
                 high = mid_3;
             }
-        } while(d_2 > 0 && safety++ < 30);
+        } while (d_2 > 0 && safety++ < 30);
 
         return {
             p: p_2,
             t: mid_2,
-        }
+        };
     }
 
     // Binary search with safety for iterating on curve
@@ -587,7 +593,7 @@ export class RationalBezier<P extends Point> {
         let y: number[][] = <number[][]>cy.toArray();
 
         let bezier_points = x.map((row, idx) => {
-            return new Point2D(row[0], y[idx][0], 0);
+            return new Point2D(row[0], y[idx][0], 1);
         });
 
         // Re-adjust the start and end to prevent drift
@@ -817,7 +823,7 @@ export class RationalBezier<P extends Point> {
             let n = controls.length - 1;
             let s = 1 - t;
 
-            let init_point = new Point2D(0, 0, 0);
+            let init_point = new Point2D(0, 0, 1);
             let denominator = 0;
 
             for (let j = 0; j < controls.length; j++) {

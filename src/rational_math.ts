@@ -2,6 +2,7 @@ import { IPoint } from "makerjs";
 import { abs, floor, min, sqrt } from "mathjs";
 import { RationalBezier } from "./rational_bezier";
 import { Point, Point2D, Point3D } from "./rational_point";
+import { Interval } from "./segmented_hull";
 
 // Taken from https://stackoverflow.com/questions/13977354/build-circle-from-3-points-in-3d-space-implementation-in-c-or-c
 export function circle_center<T extends Point>(
@@ -77,7 +78,9 @@ const FLATTEN_RESOLUTION = 1000;
 //  flattened point arrays of both
 export function unroll_point_set(
     a: RationalBezier<Point3D>,
+    interval_a: Interval,
     b: RationalBezier<Point3D>,
+    interval_b: Interval,
     reverse_points: boolean,
     f2_init: Point2D,
     f2f3_ang: number,
@@ -102,13 +105,24 @@ export function unroll_point_set(
      * 1    2
      * a    b
      */
+    const points_a: Point3D[] = [];
+    const points_b: Point3D[] = [];
+    for (let i = 0; i <= FLATTEN_RESOLUTION; i++) {
+        const e = (i / FLATTEN_RESOLUTION);
+        const s = 1 - e;
+        let pos_a = 0;
+        let pos_b = 0;
 
-    let start_i = 0;
-    let inc_i = 1 / FLATTEN_RESOLUTION;
+        if (reverse_points) {
+            pos_a = interval_a.start * e + interval_a.end * s;
+            pos_b = interval_b.start * e + interval_b.end * s;
+        } else {
+            pos_a = interval_a.start * s + interval_a.end * e;
+            pos_b = interval_b.start * s + interval_b.end * e;
+        }
 
-    if (reverse_points) {
-        start_i = 1;
-        inc_i = -inc_i;
+        points_a.push(a.get(pos_a));
+        points_b.push(b.get(pos_b));
     }
 
     // Our arrays to populate
@@ -116,14 +130,14 @@ export function unroll_point_set(
     let b_flat: Point2D[] = [];
 
     // Initial points
-    let p1 = a.get(start_i);
-    let p2 = b.get(start_i);
+    let p1 = points_a[0];
+    let p2 = points_b[0];
 
     // Calculate f2, this is a pretty similar operation to the loop body
     let f2 = f2_init;
     let f1 = Point2D.Zero;
     {
-        let p3 = b.get(start_i + inc_i);
+        let p3 = points_b[1];
         let t2 = p3.sub(p2).angle(p1.sub(p2));
         let d12 = p1.dist(p2);
 
@@ -137,9 +151,9 @@ export function unroll_point_set(
     a_flat.push(f1);
     b_flat.push(f2);
 
-    for (let i = start_i + inc_i; i <= 1 && i >= 0; i += inc_i) {
-        let p4 = a.get(i);
-        let p3 = b.get(i);
+    for (let i = 1; i < points_a.length; i++) {
+        let p4 = points_a[i];
+        let p3 = points_b[i];
 
         let txf1 = f1.axis_angle(0, f2);
         let txf2 = f2.axis_angle(0, f1);

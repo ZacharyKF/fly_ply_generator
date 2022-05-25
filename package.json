@@ -5,6 +5,7 @@
     "makerjs": "^0.17.1",
     "mathjs": "^9.4.3",
     "parse-stl": "^1.0.2",
+    "priority-queue-typescript": "^1.0.1",
     "stl": "^1.1.1"
   },
   "devDependencies": {

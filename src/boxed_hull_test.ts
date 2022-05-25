@@ -80,7 +80,7 @@ let bulk_heads: number[] = [
     (2 * hull_length_half) / 3,
 ];
 
-let waterlines: number[] = [1, 1.25, 1.5, 1.75, 2];
+let waterlines: number[] = [];//[1, 1.25, 1.5, 1.75, 2];
 
 let meeting_point = new Point3D(
     hull_length_half + gunnel_rise * tan(rake_rad),
