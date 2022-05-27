@@ -35,15 +35,15 @@ export interface DrawableHull {
 // Drawing parameters
 let scale_up = 100;
 let slices = 500;
-let segments_drawn = 100;
-let lee_draw = false;
+let segments_drawn = 50;
+let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
 let variance_threshold = 0.4225;
 let max_segments = 5;
-let curve_colinearity_tolerance = 0.975;
+let curve_colinearity_tolerance = -0.99;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;
@@ -227,46 +227,46 @@ for (let i = 0; i < 3; i++) {
 projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
 projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
 
-// let { lee, wind, lee_panels, wind_panels } = hull.draw_flattened_hull(
-//     lee_draw,
-//     wind_draw,
-//     puzzle_tooth_width,
-//     puzzle_tooth_angle,
-//     bulk_heads
-// );
+let { lee, wind, lee_panels, wind_panels } = hull.draw_flattened_hull(
+    lee_draw,
+    wind_draw,
+    puzzle_tooth_width,
+    puzzle_tooth_angle,
+    bulk_heads
+);
 
-// let x_offset = hull_length / 7;
+let x_offset = hull_length / 7;
 
-// if (lee_draw) {
-//     let name = "lee_flat";
-//     export_svg(name, lee);
-//     lee = MakerJs.model.rotate(lee, 90);
-//     lee = MakerJs.model.mirror(lee, true, true);
-//     lee = MakerJs.model.move(lee, [
-//         x_offset + gunnel_rise * 1.05,
-//         hull_depth * 1.1,
-//     ]);
-//     model_map[name] = lee;
+if (lee_draw) {
+    let name = "lee_flat";
+    export_svg(name, lee);
+    lee = MakerJs.model.rotate(lee, -90);
+    lee = MakerJs.model.mirror(lee, true, true);
+    lee = MakerJs.model.move(lee, [
+        x_offset + gunnel_rise * 1.05,
+        hull_depth * 1.1,
+    ]);
+    model_map[name] = lee;
 
-//     lee_panels.forEach((panel, idx) => {
-//         export_svg("lee_panel_" + idx, panel);
-//     });
-// }
-// if (wind_draw) {
-//     let name = "wind_flat";
-//     export_svg(name, wind);
-//     wind = MakerJs.model.rotate(wind, 90);
-//     wind = MakerJs.model.mirror(wind, false, true);
-//     wind = MakerJs.model.move(wind, [
-//         x_offset - gunnel_rise * 1.05,
-//         hull_depth * 1.1,
-//     ]);
-//     model_map[name] = wind;
+    lee_panels.forEach((panel, idx) => {
+        export_svg("lee_panel_" + idx, panel);
+    });
+}
+if (wind_draw) {
+    let name = "wind_flat";
+    export_svg(name, wind);
+    wind = MakerJs.model.rotate(wind, -90);
+    wind = MakerJs.model.mirror(wind, false, true);
+    wind = MakerJs.model.move(wind, [
+        x_offset - gunnel_rise * 1.05,
+        hull_depth * 1.1,
+    ]);
+    model_map[name] = wind;
 
-//     wind_panels.forEach((panel, idx) => {
-//         export_svg("wind_panel_" + idx, panel);
-//     });
-// }
+    wind_panels.forEach((panel, idx) => {
+        export_svg("wind_panel_" + idx, panel);
+    });
+}
 
 bulk_heads.forEach((dist, idx) => {
     let bulk_head = hull.draw_bulkhead(dist, idx);

@@ -72,8 +72,6 @@ export interface UnrollResult {
     fnfn_less1_dir: number;
 }
 
-const FLATTEN_RESOLUTION = 1000;
-
 // p1 is the flattened point from the top right of the bezier, everything is unrolled from this point, it returns the
 //  flattened point arrays of both
 export function unroll_point_set(
@@ -105,25 +103,16 @@ export function unroll_point_set(
      * 1    2
      * a    b
      */
-    const points_a: Point3D[] = [];
-    const points_b: Point3D[] = [];
-    for (let i = 0; i <= FLATTEN_RESOLUTION; i++) {
-        const e = (i / FLATTEN_RESOLUTION);
-        const s = 1 - e;
-        let pos_a = 0;
-        let pos_b = 0;
-
-        if (reverse_points) {
-            pos_a = interval_a.start * e + interval_a.end * s;
-            pos_b = interval_b.start * e + interval_b.end * s;
-        } else {
-            pos_a = interval_a.start * s + interval_a.end * e;
-            pos_b = interval_b.start * s + interval_b.end * e;
-        }
-
-        points_a.push(a.get(pos_a));
-        points_b.push(b.get(pos_b));
-    }
+    const num_points = min(
+        a.get_min_resolution(interval_a.start, interval_a.end),
+        b.get_min_resolution(interval_b.start, interval_b.end)
+    );
+    const points_b: Point3D[] = reverse_points
+        ? b.get_n_in_range(num_points, interval_b.end, interval_b.start)
+        : b.get_n_in_range(num_points, interval_b.start, interval_b.end);
+    const points_a: Point3D[] = reverse_points
+        ? a.get_n_in_range(num_points, interval_a.end, interval_a.start)
+        : a.get_n_in_range(num_points, interval_a.start, interval_a.end);
 
     // Our arrays to populate
     let a_flat: Point2D[] = [];

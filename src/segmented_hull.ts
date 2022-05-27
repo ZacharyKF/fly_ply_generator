@@ -28,12 +28,11 @@ export interface CurveOffsets {
 }
 
 export interface CurveOffset {
-    dist: number;
     seg_idx: number;
-    divisor: number;
+    dist_div: Point2D;
 }
 
-const MAX_NUM = 2**63;
+const MAX_NUM = 2 ** 63;
 
 export class SegmentedHull {
     lee_segments: HullSegment[];
@@ -100,9 +99,12 @@ export class SegmentedHull {
                 last_idx: 0,
                 divisor_set: [
                     {
-                        dist: offsets[0].dist,
+                        dist_div: new Point2D(
+                            offsets[0].dist,
+                            offsets[0].divisors[j],
+                            1
+                        ),
                         seg_idx: offsets[0].seg_idx,
-                        divisor: offsets[0].divisors[j],
                     },
                 ],
             });
@@ -123,112 +125,41 @@ export class SegmentedHull {
             for (let j = 0; j < offset.divisors.length; j++) {
                 const divisor = offset.divisors[j];
                 curve_point_list[j].divisor_set.push({
-                    dist: offset.dist,
+                    dist_div: new Point2D(offset.dist, divisor, 1),
                     seg_idx: offset.seg_idx,
-                    divisor
                 });
             }
         }
 
-        curve_point_list.forEach((curve) => {
-            if (curve.divisor_set.length < 3) {
-                return;
-            }
-
-            // First we need to map the offsets to points
-            let points: { p: Point2D; idx: number }[] = curve.divisor_set.map(
-                (offset, idx) => {
-                    return {
-                        p: new Point2D(offset.dist, offset.divisor, 1),
-                        idx,
-                    };
-                }
-            );
-
-            // Now, since we're dealing with a convex curve, we can abuse the 
-            //  fact that the angle between the midpoint, our current point, and
-            //  the test point, must be maximized
-            let center = points[0].p.add(points[points.length - 1].p).div(2);
-            {
-                let furthest_idx = 0;
-                let smallest_angle = MAX_NUM;
-                for (let i = 1; i < points.length - 1; i++) {
-                    let angle = points[0].p
-                        .sub(points[i].p)
-                        .angle(points[points.length - 1].p.sub(points[i].p));
-
-                    if (angle < smallest_angle) {
-                        smallest_angle = angle;
-                        furthest_idx = i;
-                    }
-                }
-
-                let test_center = circle_center(
-                    points[0].p,
-                    points[furthest_idx].p,
-                    points[points.length - 1].p
-                );
-
-                if (test_center == undefined) {
-                    console.error("Could not find center");
-                    return;
-                } else {
-                    center = test_center;
-                }
-            }
-
-            // Our first list of valid points
-            let hull: { p: Point2D; idx: number }[] = [points[0]];
-
-            let idx = 0;
-            let last_point = points[idx];
-            let vec_last, vec_next, test_angle, temp_angle;
-            do {
-                vec_last = center.sub(last_point.p);
-                test_angle = 0;
-
-                for (let i = idx + 1; i < points.length; i++) {
-                    vec_next = points[i].p.sub(last_point.p);
-                    temp_angle = vec_last.angle(vec_next);
-
-                    if (temp_angle < test_angle) {
-                        continue;
-                    }
-
-                    test_angle = temp_angle;
-                    idx = i;
-                }
-
-                last_point = points[idx];
-                hull.push(last_point);
-            } while (idx < points.length - 1);
-
-            // One more filter step needs to be done. Any sets of 3 points where they are sufficiently co-linear need the
-            //  center-point removed
-            hull = colinear_filter(
-                hull,
-                (val) => val.p,
-                2,
-                colinearity_tolerance
-            );
-
-            curve.divisor_set = hull.map((hull_point) => {
-                return curve.divisor_set[hull_point.idx];
-            });
-        });
-
         const hull_curves: HullCurve[] = new Array(curve_point_list.length);
         for (let i = 0; i < curve_point_list.length; i++) {
-            const curve = curve_point_list[i];
-            const t_points: Point2D[] = curve.divisor_set.map((offest) => {
-                return new Point2D(offest.dist, offest.divisor, 1);
-            });
+            const set = curve_point_list[i].divisor_set;
+            const t_points: Point2D[] = [set[0].dist_div];
+
+            // Remove any elements that don't have sufficient angle
+            for (let j = 1; j < set.length - 1; j++) {
+                const vec_ba = set[j].dist_div.sub(set[j - 1].dist_div);
+                const vec_bc = set[j].dist_div.sub(set[j + 1].dist_div);
+                const dot = vec_ba.dot(vec_bc);
+
+                if (dot > colinearity_tolerance) {
+                    // We want to add the lowest of the next two points, then
+                    //  skip the next
+                    if (set[j].dist_div.y < set[j + 1].dist_div.y) {
+                        t_points.push(set[j].dist_div);
+                    } else {
+                        t_points.push(set[j + 1].dist_div);
+                    }
+                    j++;
+                }
+            }
+            t_points.push(set[set.length - 1].dist_div);
+            const curve = RationalBezier.fit_to_points(t_points, 2);
 
             hull_curves.push({
-                start_seg_idx: curve.divisor_set[0].seg_idx,
-                end_seg_idx:
-                    curve.divisor_set[curve.divisor_set.length - 1].seg_idx,
-                curve: RationalBezier.fit_to_points(t_points, 10),
+                start_seg_idx: set[0].seg_idx,
+                end_seg_idx: set[set.length - 1].seg_idx,
+                curve,
             });
         }
 

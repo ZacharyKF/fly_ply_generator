@@ -374,9 +374,9 @@ export class Point2D implements Point {
         let dot =
             (this.x * other.x + this.y * other.y) /
             (this.magnitude * other.magnitude);
-        if (dot > 1) {
+        if (dot >= 1) {
             return 1;
-        } else if (dot < -1) {
+        } else if (dot <= -1) {
             return -1;
         } else {
             return dot;

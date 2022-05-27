@@ -16,8 +16,9 @@ import { binomial } from "./math";
 import { Point, Point2D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
 
-const RESOLUTION = 1000;
-const RES_SQ = RESOLUTION ** 2;
+const MAX_RESOLUTION = 4000;
+const MIN_STEP = 1/MAX_RESOLUTION;
+const MIN_STEP_FACTOR = 2/3;
 
 export interface RationalLut<P extends Point> {
     p: P;
@@ -32,6 +33,7 @@ export class RationalBezier<P extends Point> {
     controls: P[];
     lut: RationalLut<P>[];
     length: number;
+    resolution: number;
 
     constructor(controls: P[]) {
         this.controls = controls;
@@ -43,7 +45,9 @@ export class RationalBezier<P extends Point> {
         }
         length_estimate = (length_estimate * 2) / 3;
         length_estimate += controls[0].dist(controls[controls.length - 1]) / 3;
-        const length_step = length_estimate / RESOLUTION;
+        this.resolution = min(MAX_RESOLUTION, floor(length_estimate/MIN_STEP))
+
+        const length_step = length_estimate / this.resolution;
 
         // Now we want to create evenly spaced items along the curve
         let lut_last = {
@@ -62,8 +66,8 @@ export class RationalBezier<P extends Point> {
          *  to try and fit at the specified distance. The points only really
          *  need to be the "closest" to a particular distance.
          */
-        const guess_resolution = length_step / RES_SQ;
-        for (let i = 1; i < RESOLUTION; i++) {
+        const guess_resolution = length_step / (this.resolution ** 2);
+        for (let i = 1; i < this.resolution; i++) {
             let high = 1;
             let low = lut_last.t;
             let p_guess = lut_last.p;
@@ -127,43 +131,43 @@ export class RationalBezier<P extends Point> {
             b.a = angle + a.a;
             b.aa = angle * angle + a.aa;
         }
-
-        // let spacing_error = 0;
-        // for (let i = 1; i < this.lut.length - 1; i++) {
-        //     const prev = this.lut[i - 1];
-        //     const curr = this.lut[i];
-        //     const d = curr.d - prev.d;
-        //     spacing_error += 1 - d / length_step;
-        //     if (
-        //         prev.t > curr.t ||
-        //         curr.p.dist(prev.p) == 0 ||
-        //         curr.a == NaN ||
-        //         curr.aa == NaN
-        //     ) {
-        //         console.error("==== ERRANT LUT ====");
-        //         console.error(
-        //             "\nSpacing Error=> ",
-        //             spacing_error / (this.lut.length - 2),
-        //             "\nDist Step    => ",
-        //             length_step,
-        //             "\nDistance     => ",
-        //             d,
-        //             "\nLUT length   => ",
-        //             this.lut.length,
-        //             "\nI            => ",
-        //             i,
-        //             "\nCurr         => ",
-        //             curr,
-        //             "\nPrev         => ",
-        //             prev
-        //         );
-        //         throw new Error("Errant LUT");
-        //     }
-        // }
     }
 
-    map_t(d_check: number, lut_guess: number): number {
-        let lut_id = lut_guess;
+    // Returns a number relative to the length of the lut between two points,
+    //  this can be used to avoid collision due to linear interpolation
+    get_min_resolution(t_min: number, t_max: number): number {
+        const t_low = min(t_min, t_max);
+        const t_high = max(t_min, t_max);
+        let id_low = floor(t_low * this.lut.length);
+        let id_high = floor(t_high * this.lut.length);
+        return ceil(MIN_STEP_FACTOR * (id_high - id_low));
+    }
+
+    get_n_in_range(n: number, t_min: number, t_max: number) {
+        const results: P[] = [];
+
+        for (let i = 0; i <= n; i++) {
+            const t = i / n;
+            const s = 1 - t;
+            const u = t_min * s + t_max * t;
+            results.push(this.get(u));
+        }
+
+        return results;
+    }
+
+    get(u: number): P {
+        const d_check = u * this.length;
+        let lut_id = floor(u * this.lut.length);
+
+        if (lut_id <= 0) {
+            return this.controls[0];
+        }
+
+        if (lut_id >= this.lut.length - 1) {
+            return this.controls[this.controls.length - 1];
+        }
+
         // Move our lut_id back if it's distance is too large
         while (this.lut[lut_id].d > d_check) {
             lut_id = lut_id - 1;
@@ -180,21 +184,9 @@ export class RationalBezier<P extends Point> {
         const y_sub_y1 = d_check - lut_low.d;
         const x2_sub_x1 = lut_high.t - lut_low.t;
         const y2_sub_y1 = lut_high.d - lut_low.d;
-        return (y_sub_y1 * x2_sub_x1) / y2_sub_y1 + lut_low.t;
-    }
+        const t = (y_sub_y1 * x2_sub_x1) / y2_sub_y1 + lut_low.t;
 
-    get(u: number): P {
-        const d_check = u * this.length;
-        const lut_id = floor(u * this.lut.length);
-
-        if (lut_id <= 0) {
-            return this.controls[0];
-        }
-
-        if (lut_id >= this.lut.length - 1) {
-            return this.controls[this.controls.length - 1];
-        }
-        return this.get_internal(this.map_t(d_check, lut_id));
+        return this.get_internal(t);
     }
 
     get_struts(t: number): P[][] {
@@ -495,16 +487,6 @@ export class RationalBezier<P extends Point> {
             //  add more segments to decrease the variance
         } while (total_error > variance_tolerance && num_segs++ < max_segments);
 
-        // console.log("\n==== BUILT SEGMENTS ====")
-        // for(let i = 0; i < divisors.length - 1; i++) {
-        //     console.log(
-        //         "\nSEGMENT =>",
-        //         "\nDivisor A    : ", this.lut[divisors[i]].p,
-        //         "\nDivisor B    : ", this.lut[divisors[i + 1]].p,
-        //         "\nSegment A    : ", this.get(segments[i].start_t),
-        //         "\nSegment B    : ", this.get(segments[i].end_t),
-        //     );
-        // }
         return segments;
     }
 
@@ -585,11 +567,12 @@ export class RationalBezier<P extends Point> {
         return new RationalBezier(controls);
     }
 
-    static fit_controls(points: Point2D[]): Point2D[] {
-        let controls: Point2D[] = [];
+    static fit_controls(ps: Point2D[]): Point2D[] {
+        const controls: Point2D[] = [];
+        const points: Point2D[] = [...ps];
 
         // This is just a straight-ish line so slap the midpoint in the middle
-        if (points.length == 2 || points.length > 4) {
+        if (points.length == 2) {
             let temp = points.pop();
             if (temp != undefined) {
                 controls.push(points[0]);
@@ -996,6 +979,7 @@ export class RationalBezier<P extends Point> {
         //                    j
 
         let u: Point2D[] = new Array(m - k - l + 1);
+        u.fill(Point2D.Zero);
         let t: number[] = new Array(m - k - l + 1);
         u[0] = new_controls[k];
         t[0] = 1;
