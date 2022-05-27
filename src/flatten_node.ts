@@ -309,6 +309,11 @@ export class FlattenNode {
             this.lower_bound(segments[this.start_seg_idx].dist)
         );
 
+        if (this.start_seg_idx == idx_end) {
+            console.error("\n==== START SEG == END SEG ====")
+            throw new Error("Start Seg == End Seg");
+        }
+
         let bounds_b = this.get_bounded_interval(segments[this.start_seg_idx]);
         let bounds_a = this.get_bounded_interval(segments[this.start_seg_idx - 1]);
 

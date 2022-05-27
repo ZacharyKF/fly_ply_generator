@@ -154,7 +154,7 @@ export class SegmentedHull {
                 }
             }
             t_points.push(set[set.length - 1].dist_div);
-            const curve = RationalBezier.fit_to_points(t_points, 2);
+            const curve = RationalBezier.fit_to_points(t_points, 10);
 
             hull_curves.push({
                 start_seg_idx: set[0].seg_idx,

@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import MakerJs, { IModel, IModelMap, exporter, IPathMap } from "makerjs";
-import { pi, tan } from "mathjs";
+import { min, pi, tan } from "mathjs";
 import { RationalBezierHull } from "./rational_bezier_hull";
 import { Point3D } from "./rational_point";
 
@@ -34,28 +34,32 @@ export interface DrawableHull {
 
 // Drawing parameters
 let scale_up = 100;
-let slices = 500;
-let segments_drawn = 50;
-let lee_draw = true;
+let slices = 100;
+let segments_drawn = min(slices - 1, 75);
+let draw_main_curves = false;
+let draw_hull_curves = true;
+let draw_segments = true;
+let draw_waterlines = false;
+let lee_draw = false;
 let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
-let variance_threshold = 0.4225;
+let variance_threshold = 0.7225;
 let max_segments = 5;
-let curve_colinearity_tolerance = -0.99;
+let curve_colinearity_tolerance = -0.95;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;
-let hull_ratio = 1.0 / 11.25;
+let hull_ratio = 1.0 / 9;
 let hull_width = hull_length * hull_ratio;
-let bow_rake = 17.5;
+let bow_rake = -15;
 let asymmetry_wind = 4 / 7;
 let gunnel_jump = 7.5 / 14;
-let horizontal_flat = 9 / 14;
-let vertical_flat = 19 / 35;
-let lee_cut_depth = 21 / 35;
-let lee_cut_width = 1 / 7;
+let horizontal_flat = 4 / 5;
+let vertical_flat = 3 / 5;
+let lee_cut_depth = 3 / 5;
+let lee_cut_width = 2 / 5;
 let hull_depth = -2.25;
 let gunnel_rise = 0.5;
 let puzzle_tooth_width = hull_depth / 30;
@@ -68,10 +72,10 @@ let asymmetry_lee = asymmetry_wind - 1.0;
 lee_cut_width = lee_cut_width * asymmetry_lee;
 
 let weights: number[][] = [
-    [1, 2.25, 1.75], // bilge curve
-    [2.75, 0.75], // lee special
-    [2.75, 1.75], // side default
-    [0.625, 1.125, 1, 0.25], // gunnel
+    [1, 2.25, 1], // bilge curve
+    [1.25, 1.25], // lee special
+    [1.75, 1.75], // side default
+    [1, 1, 1, 1], // gunnel
 ];
 
 let bulk_heads: number[] = [
@@ -80,7 +84,7 @@ let bulk_heads: number[] = [
     (2 * hull_length_half) / 3,
 ];
 
-let waterlines: number[] = [];//[1, 1.25, 1.5, 1.75, 2];
+let waterlines: number[] = [1, 1.25, 1.5, 1.75, 2];
 
 let meeting_point = new Point3D(
     hull_length_half + gunnel_rise * tan(rake_rad),
@@ -97,7 +101,7 @@ let wind_curves: Point3D[][] = [];
 let bilge_curve: Point3D[] = [
     new Point3D(0.0, hull_depth, 0.0, weights[0][0]),
     new Point3D(
-        hull_length_half + hull_depth * tan((bow_rake * pi) / 180.0),
+        hull_length_half - hull_depth * tan((bow_rake * pi) / 180.0),
         hull_depth,
         0.0,
         weights[0][1]
@@ -192,36 +196,45 @@ let model: IModel = {
 };
 
 for (let i = 0; i < 3; i++) {
-    proj_maps[i]["main_curves"] = hull.draw_main_curves(i);
-    proj_maps[i]["hull_segments"] = hull.draw_segments(
-        i,
-        segments_drawn,
-        lee_draw,
-        wind_draw,
-        as_divisions
-    );
-    proj_maps[i]["hull_curves"] = hull.draw_hull_curves(i, lee_draw, wind_draw);
+    if (draw_main_curves) {
+        proj_maps[i]["main_curves"] = hull.draw_main_curves(i);
+    }
+    if (draw_segments) {
+        proj_maps[i]["hull_segments"] = hull.draw_segments(
+            i,
+            segments_drawn,
+            lee_draw,
+            wind_draw,
+            as_divisions
+        );
+    }
+    if (draw_hull_curves) {
+        proj_maps[i]["hull_curves"] = hull.draw_hull_curves(i, lee_draw, wind_draw);
+    }
 }
 
-for (let i = 0; i < 3; i++) {
-    if (i == 1) {
-        continue;
+if (draw_waterlines){
+    for (let i = 0; i < 3; i++) {
+        if (i == 1) {
+            continue;
+        }
+        let paths: IPathMap = {};
+        waterlines.forEach((wl, idx) => {
+            let a: Point3D = new Point3D(
+                hull_length_half,
+                hull_depth + wl,
+                hull_width,
+                0
+            );
+    
+            let b: Point3D = new Point3D(0, hull_depth + wl, -hull_width, 1);
+            paths["wl_" + i + "_" + idx] = {
+                layer: "aqua",
+                ...new MakerJs.paths.Line(a.to_ipoint(i), b.to_ipoint(i)),
+            };
+        });
+        projections[i].paths = paths;
     }
-    let paths: IPathMap = {};
-    waterlines.forEach((wl, idx) => {
-        let a: Point3D = new Point3D(
-            hull_length_half,
-            hull_depth + wl,
-            hull_width,
-            0
-        );
-        let b: Point3D = new Point3D(0, hull_depth + wl, -hull_width, 1);
-        paths["wl_" + i + "_" + idx] = {
-            layer: "aqua",
-            ...new MakerJs.paths.Line(a.to_ipoint(i), b.to_ipoint(i)),
-        };
-    });
-    projections[i].paths = paths;
 }
 
 projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
@@ -283,20 +296,21 @@ bulk_heads.forEach((dist, idx) => {
 
 export_svg("hull_model", model);
 
+console.log("\n==== WATERLINES ====");
 let water_line_volumes_ratio: number[] = [];
 waterlines.forEach((w) => {
     let volume = hull.volume_under(w + hull_depth) * 0.02831685;
     water_line_volumes_ratio.push(volume);
-    console.log("\n==== WATERLINE " + w.toPrecision(5) + " ====");
-    console.log("Volume: " + volume.toPrecision(5) + " m3");
-    console.log("Displacement: " + (volume * 1024).toPrecision(5) + " kg");
+    console.log("Waterline    : " + w.toPrecision(4))
+    console.log("    => Volume    : " + volume.toPrecision(4) + " m3");
+    console.log("    => Displc.   : " + (volume * 1024).toPrecision(5) + " kg");
 });
 
 if (water_line_volumes_ratio.length > 1) {
     console.log("\n==== WATERLINE VOLUME RATIOS ====");
     for (let i = 1; i < water_line_volumes_ratio.length; i++) {
         console.log(
-            water_line_volumes_ratio[i] / water_line_volumes_ratio[i - 1]
+            (water_line_volumes_ratio[i] / water_line_volumes_ratio[i - 1]).toPrecision(4)
         );
     }
 }

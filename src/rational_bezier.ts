@@ -16,7 +16,7 @@ import { binomial } from "./math";
 import { Point, Point2D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
 
-const MAX_RESOLUTION = 4000;
+const MAX_RESOLUTION = 2000;
 const MIN_STEP = 1/MAX_RESOLUTION;
 const MIN_STEP_FACTOR = 2/3;
 
