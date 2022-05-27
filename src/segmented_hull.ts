@@ -1,5 +1,7 @@
 import { IModel, IModelMap } from "makerjs";
-import { abs, max, min, pi } from "mathjs";
+import { abs, max, min, number, pi } from "mathjs";
+import PriorityQueue from "priority-queue-typescript";
+import { SortedQueue } from "sorted-queue";
 import { FlattenResult } from "./boxed_hull_test";
 import { FlattenNode } from "./flatten_node";
 import { colinear_filter, points_to_imodel } from "./makerjs_tools";
@@ -19,17 +21,19 @@ export interface Interval {
     end: number;
 }
 
-export interface CurveOffsetIntervals {
+export interface CurveOffsets {
     dist: number;
     seg_idx: number;
-    intervals: Interval[];
+    divisors: number[];
 }
 
-export interface CurveOffsetInterval {
+export interface CurveOffset {
     dist: number;
     seg_idx: number;
-    interval: Interval;
+    divisor: number;
 }
+
+const MAX_NUM = 2**63;
 
 export class SegmentedHull {
     lee_segments: HullSegment[];
@@ -46,9 +50,9 @@ export class SegmentedHull {
         this.wind_segments = wind_segments;
 
         let offsets_lee =
-            SegmentedHull.segments_to_offset_intervals(lee_segments);
+            SegmentedHull.segments_to_offset_divisors(lee_segments);
         let offsets_wind =
-            SegmentedHull.segments_to_offset_intervals(wind_segments);
+            SegmentedHull.segments_to_offset_divisors(wind_segments);
 
         this.lee_curves = SegmentedHull.process_segments_into_hull_curve(
             offsets_lee,
@@ -60,115 +64,94 @@ export class SegmentedHull {
         );
     }
 
-    static segments_to_offset_intervals(
+    static segments_to_offset_divisors(
         segments: HullSegment[]
-    ): CurveOffsetIntervals[] {
-        let offset_intervals: CurveOffsetIntervals[] = [];
+    ): CurveOffsets[] {
+        const offset_divisors: CurveOffsets[] = [];
 
         segments.forEach((hull_seg, seg_idx) => {
-            let intervals = hull_seg.curve_segments.map((curve_segment) => {
-                return {
-                    start: curve_segment.start_t,
-                    end: curve_segment.end_t,
-                };
-            });
+            const divisors = new Array(hull_seg.curve_segments.length - 1);
+            for (let i = 0; i < hull_seg.curve_segments.length - 1; i++) {
+                divisors[i] = hull_seg.curve_segments[i].end_t;
+            }
 
-            // Since we base the curves on the end interval. This helps remove
-            //  the final one. We want to create curves based on the line
-            //  between the intervals
-            intervals.pop();
-
-            offset_intervals.push({
+            offset_divisors.push({
                 dist: hull_seg.dist,
                 seg_idx,
-                intervals,
+                divisors,
             });
         });
 
-        return offset_intervals;
+        return offset_divisors;
     }
 
     static process_segments_into_hull_curve(
-        offsets: CurveOffsetIntervals[],
+        offsets: CurveOffsets[],
         colinearity_tolerance: number
     ): HullCurve[] {
         // This is an array that we'll fill by matching segments appropiately to their parent curves
         let curve_point_list: {
             last_idx: number;
-            last_interval: Interval;
-            owned_offsets: CurveOffsetInterval[];
+            divisor_set: CurveOffset[];
         }[] = [];
 
-        offsets[0].intervals.forEach((interval) => {
+        for (let j = 0; j < offsets[0].divisors.length; j++) {
             curve_point_list.push({
                 last_idx: 0,
-                last_interval: interval,
-                owned_offsets: [
+                divisor_set: [
                     {
                         dist: offsets[0].dist,
                         seg_idx: offsets[0].seg_idx,
-                        interval,
+                        divisor: offsets[0].divisors[j],
                     },
                 ],
             });
-        });
+        }
 
+        // Priority queue we'll use to sort our divisors we want the minimum
+        //  distance for any matches
         for (let i = 1; i < offsets.length; i++) {
-            let offset = offsets[i];
+            const offset = offsets[i];
 
-            // We need to match, or not match all our intervals
-            for (let interval of offset.intervals) {
-                let largest_overlap = 0;
-                let largest_overlap_idx = 0;
+            // If there aren't any divisors, we can break
+            if (offset.divisors.length == 0) {
+                break;
+            }
 
-                curve_point_list.forEach((bezier, idx) => {
-                    // Ignore curves that have been ended
-                    if (bezier.last_idx == i - 1) {
-                        let overlap =
-                            min(interval.end, bezier.last_interval.end) -
-                            max(interval.start, bezier.last_interval.start);
-
-                        if (overlap > 0 && overlap > largest_overlap) {
-                            largest_overlap = overlap;
-                            largest_overlap_idx = idx;
-                        }
-                    }
+            // Since they're always ordered from top to bottom this is a simple
+            //  operation
+            for (let j = 0; j < offset.divisors.length; j++) {
+                const divisor = offset.divisors[j];
+                curve_point_list[j].divisor_set.push({
+                    dist: offset.dist,
+                    seg_idx: offset.seg_idx,
+                    divisor
                 });
-
-                if (largest_overlap > 0) {
-                    curve_point_list[largest_overlap_idx].last_idx = i;
-                    curve_point_list[largest_overlap_idx].last_interval =
-                        interval;
-                    curve_point_list[largest_overlap_idx].owned_offsets.push({
-                        dist: offset.dist,
-                        seg_idx: offset.seg_idx,
-                        interval: interval,
-                    });
-                }
             }
         }
 
         curve_point_list.forEach((curve) => {
-            if (curve.owned_offsets.length < 3) {
+            if (curve.divisor_set.length < 3) {
                 return;
             }
 
             // First we need to map the offsets to points
-            let points: { p: Point2D; idx: number }[] = curve.owned_offsets.map(
+            let points: { p: Point2D; idx: number }[] = curve.divisor_set.map(
                 (offset, idx) => {
                     return {
-                        p: new Point2D(offset.dist, offset.interval.end, 1),
+                        p: new Point2D(offset.dist, offset.divisor, 1),
                         idx,
                     };
                 }
             );
 
-            // Now, since we're dealing with a convex curve, we can abuse the fact that the angle between the midpoint, our
-            //  current point, and the test point, must be maximized
+            // Now, since we're dealing with a convex curve, we can abuse the 
+            //  fact that the angle between the midpoint, our current point, and
+            //  the test point, must be maximized
             let center = points[0].p.add(points[points.length - 1].p).div(2);
             {
                 let furthest_idx = 0;
-                let smallest_angle = 2 ** 63;
+                let smallest_angle = MAX_NUM;
                 for (let i = 1; i < points.length - 1; i++) {
                     let angle = points[0].p
                         .sub(points[i].p)
@@ -229,23 +212,25 @@ export class SegmentedHull {
                 colinearity_tolerance
             );
 
-            curve.owned_offsets = hull.map((hull_point) => {
-                return curve.owned_offsets[hull_point.idx];
+            curve.divisor_set = hull.map((hull_point) => {
+                return curve.divisor_set[hull_point.idx];
             });
         });
 
-        let hull_curves: HullCurve[] = curve_point_list.map((curve) => {
-            let t_points: Point2D[] = curve.owned_offsets.map((offest) => {
-                return new Point2D(offest.dist, offest.interval.end, 1);
+        const hull_curves: HullCurve[] = new Array(curve_point_list.length);
+        for (let i = 0; i < curve_point_list.length; i++) {
+            const curve = curve_point_list[i];
+            const t_points: Point2D[] = curve.divisor_set.map((offest) => {
+                return new Point2D(offest.dist, offest.divisor, 1);
             });
 
-            return {
-                start_seg_idx: curve.owned_offsets[0].seg_idx,
+            hull_curves.push({
+                start_seg_idx: curve.divisor_set[0].seg_idx,
                 end_seg_idx:
-                    curve.owned_offsets[curve.owned_offsets.length - 1].seg_idx,
-                curve: RationalBezier.fit_to_points(t_points, 3),
-            };
-        });
+                    curve.divisor_set[curve.divisor_set.length - 1].seg_idx,
+                curve: RationalBezier.fit_to_points(t_points, 10),
+            });
+        }
 
         return hull_curves;
     }

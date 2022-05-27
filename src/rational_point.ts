@@ -32,10 +32,10 @@ export interface Point {
 }
 
 export class Point3D implements Point {
-    static Zero = new Point3D(0, 0, 0, 0);
-    static X = new Point3D(1, 0, 0, 0);
-    static Y = new Point3D(0, 1, 0, 0);
-    static Z = new Point3D(0, 0, 1, 0);
+    static Zero = new Point3D(0, 0, 0, 1);
+    static X = new Point3D(1, 0, 0, 1);
+    static Y = new Point3D(0, 1, 0, 1);
+    static Z = new Point3D(0, 0, 1, 1);
 
     x: number;
     y: number;

@@ -7,40 +7,35 @@ import { circle_center } from "./rational_math";
 import { RationalPath } from "./rational_path";
 import { Point } from "./rational_point";
 
+const N_CHECKS = 100;
 export class RationalSegment<P extends Point> {
-    readonly parent: RationalBezier<P>;
-    readonly start: number;
+    readonly start_p: P;
     readonly start_t: number;
-    readonly start_point: P;
-    readonly end: number;
+    readonly end_p: P;
     readonly end_t: number;
-    readonly end_point: P;
     readonly segment: RationalPath<P>;
     readonly error: number;
 
-    constructor(parent: RationalBezier<P>, start: number, end: number) {
-        this.parent = parent;
-        this.start = start;
-        this.start_t = parent.lut[start].d/parent.length;
-        this.start_point = parent.lut[start].p;
-        this.end = end;
-        this.end_t = parent.lut[end].d/parent.length;
-        this.end_point = parent.lut[end].p;
+    constructor(parent: RationalBezier<P>, start_p: P, start_t: number, end_p: P, end_t: number) {
+        this.start_p = start_p;
+        this.start_t = start_t;
+        this.end_p = end_p;
+        this.end_t = end_t;
 
         // Do a quarternary search for the best fit of a path to our segment
 
-        let high = end;
-        let low = start;
-        let step = floor((high - low) / 4);
-        let mid_1 = low + step;
-        let mid_2 = low + step * 2;
-        let mid_3 = low + step * 3;
+        let high = end_t;
+        let low = start_t;
+        let mid_2 = (high + low)/2;
+        let step = 0;
+        let mid_1 = 0;
+        let mid_3 = 0;
 
-        let best_path = this.make_path(mid_2);
-        let best_error = this.calc_error(best_path);
+        let best_path = this.make_path(parent, mid_2);
+        let best_error = this.calc_error(parent, best_path);
 
         while (step > 0) {
-            step = floor((high - low) / 4);
+            step = (high - low) / 4;
 
             if (step == 0) {
                 break;
@@ -49,11 +44,11 @@ export class RationalSegment<P extends Point> {
             mid_1 = mid_2 - step;
             mid_3 = mid_2 + step;
 
-            let path_1 = this.make_path(mid_1);
-            let error_1 = this.calc_error(path_1);
+            let path_1 = this.make_path(parent, mid_1);
+            let error_1 = this.calc_error(parent, path_1);
 
-            let path_3 = this.make_path(mid_3);
-            let error_3 = this.calc_error(path_3);
+            let path_3 = this.make_path(parent, mid_3);
+            let error_3 = this.calc_error(parent, path_3);
 
             if (error_1 < best_error && error_1 < error_3) {
                 // If error_1 is lowest, re center around mid_1
@@ -83,36 +78,36 @@ export class RationalSegment<P extends Point> {
         this.error = best_error;
     }
 
-    private make_path(mid: number): RationalPath<P> {
-        const mid_point = this.parent.lut[mid].p;
-        const center = circle_center(this.start_point, mid_point, this.end_point);
+    private make_path(parent: RationalBezier<P>, mid: number): RationalPath<P> {
+        const mid_p = parent.get(mid);
+        const center = circle_center(this.start_p, mid_p, this.end_p);
 
         if (center == undefined) {
-            return new RationalLine<P>(this.start_point, this.end_point);
+            return new RationalLine<P>(this.start_p, this.end_p);
         } else {
             return new RationalArc<P>(
                 center,
-                this.start_point,
-                mid_point,
-                this.end_point,
-                center.dist(mid_point)
+                this.start_p,
+                mid_p,
+                this.end_p,
+                center.dist(mid_p)
             );
         }
     }
 
-    private calc_error(path: RationalPath<P>): number {
-        let d_total = 0;
-        for (let i = this.start + 1; i < this.end - 1; i++) {
-            const seg_dist = path.dist_to_point(this.parent.lut[i].p);
-            const lut_dist = this.parent.lut[i].d - this.parent.lut[i - 1].d;
-            d_total += seg_dist * lut_dist;
+    private calc_error(parent: RationalBezier<P>, path: RationalPath<P>): number {
+        let total_error = 0;
+        let p_last = this.start_p;
+        for(let i = 1; i < N_CHECKS; i++) {
+            const idx = i/N_CHECKS;
+            const t = this.start_t * idx + this.end_t * (1 - idx);
+            const p = parent.get(t);
+            const seg_dist = path.dist_to_point(p);
+            const p_dist = p.dist(p_last);
+            total_error += seg_dist * p_dist;
+            p_last = p;
         }
-
-        const total_length =
-            this.parent.lut[this.end].d - this.parent.lut[this.start].d;
-        const l_factor = 1 + abs(path.length - total_length);
-
-        return d_total * l_factor;
+        return total_error;
     }
 
     draw(dimension: number): IPath {
