@@ -16,7 +16,7 @@ import { binomial } from "./math";
 import { Point, Point2D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
 
-const MAX_RESOLUTION = 2000;
+const MAX_RESOLUTION = 150;
 const MIN_STEP = 1/MAX_RESOLUTION;
 const MIN_STEP_FACTOR = 2/3;
 
@@ -34,6 +34,7 @@ export class RationalBezier<P extends Point> {
     lut: RationalLut<P>[];
     length: number;
     resolution: number;
+    segments: RationalSegment<P>[];
 
     constructor(controls: P[]) {
         this.controls = controls;
@@ -131,6 +132,8 @@ export class RationalBezier<P extends Point> {
             b.a = angle + a.a;
             b.aa = angle * angle + a.aa;
         }
+
+        this.segments = [];
     }
 
     // Returns a number relative to the length of the lut between two points,
@@ -245,9 +248,8 @@ export class RationalBezier<P extends Point> {
         return <P>init_point.div(denominator);
     }
 
-    // Converts the lut to a short list of 100 points
     as_list(): P[] {
-        return this.lut.filter((_, idx) => idx % 9 == 0).map((l) => l.p);
+        return this.lut.map(l => l.p);
     }
 
     // Just use every 10th point from the LUT
@@ -412,6 +414,10 @@ export class RationalBezier<P extends Point> {
         min_segments: number,
         max_segments: number
     ): RationalSegment<P>[] {
+        if (this.segments.length > 0) {
+            return this.segments;
+        }
+
         let min_id = 1;
         let max_id = this.lut.length - 2;
         let num_segs = min_segments;
@@ -487,6 +493,7 @@ export class RationalBezier<P extends Point> {
             //  add more segments to decrease the variance
         } while (total_error > variance_tolerance && num_segs++ < max_segments);
 
+        this.segments = segments;
         return segments;
     }
 

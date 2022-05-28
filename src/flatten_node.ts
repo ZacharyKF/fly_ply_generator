@@ -1,6 +1,8 @@
 import { IModel, IModelMap, model } from "makerjs";
 import { points_to_imodel, point_path_to_puzzle_teeth } from "./makerjs_tools";
+import { RationalBezier } from "./rational_bezier";
 import { HullSegment } from "./rational_bezier_hull";
+import { DivisionCurve, SurfaceCurve } from "./rational_bezier_surface";
 import { middle_value, unroll_point_set } from "./rational_math";
 import { Point2D, Point3D } from "./rational_point";
 import { HullCurve, Interval } from "./segmented_hull";
@@ -117,13 +119,13 @@ export class FlattenNode {
         return points;
     }
 
-    get_bounded_interval(segment: HullSegment): Interval {
-        const start = this.lower_bound(segment.dist);
-        const end = this.upper_bound(segment.dist);
+    get_bounded_interval(u: number): Interval {
+        const start = this.lower_bound(u);
+        const end = this.upper_bound(u);
         return {
             start,
             end,
-        }
+        };
     }
 
     append_segment(
@@ -153,8 +155,8 @@ export class FlattenNode {
     // Split the nodes recursively, consuming the nodes along the way to prevent
     //  re-consuming nodes
     try_split_recursive(
-        segments: HullSegment[],
-        curves: HullCurve[],
+        surface_curves: SurfaceCurve[],
+        curves: DivisionCurve[],
         puzzle_tooth_width: number,
         puzzle_tooth_angle: number,
         bulk_head_segs: Set<number>
@@ -162,7 +164,7 @@ export class FlattenNode {
         // If we've reached the end, then fill ourselves and return
         if (curves.length == 0) {
             this.fill(
-                segments,
+                surface_curves,
                 0,
                 puzzle_tooth_width,
                 puzzle_tooth_angle,
@@ -177,7 +179,7 @@ export class FlattenNode {
         let consumed = false;
         while (!consumed && (hull_curve = curves_copy.shift()) != undefined) {
             consumed = this.try_split(
-                segments,
+                surface_curves,
                 hull_curve,
                 puzzle_tooth_width,
                 puzzle_tooth_angle,
@@ -189,7 +191,7 @@ export class FlattenNode {
         //  ourselves
         if (!consumed) {
             this.fill(
-                segments,
+                surface_curves,
                 0,
                 puzzle_tooth_width,
                 puzzle_tooth_angle,
@@ -201,7 +203,7 @@ export class FlattenNode {
         // Otherwise Fill our children recursively
         this.children.forEach((child) =>
             child.try_split_recursive(
-                segments,
+                surface_curves,
                 curves_copy,
                 puzzle_tooth_width,
                 puzzle_tooth_angle,
@@ -213,8 +215,8 @@ export class FlattenNode {
     // Try to split the node with a given HullCurve. Either return an arry
     //  containing [this] or [upper_child, lower_child]
     try_split(
-        segments: HullSegment[],
-        curve: HullCurve,
+        surface_curves: SurfaceCurve[],
+        curve: DivisionCurve,
         puzzle_tooth_width: number,
         puzzle_tooth_angle: number,
         bulk_head_segs: Set<number>
@@ -223,7 +225,7 @@ export class FlattenNode {
         nodes: FlattenNode[];
     } {
         // Find our t values at the curve's endpoint
-        const curve_end_p = curve.curve.get(1);
+        const curve_end_p = curve.t_curve.get(1);
         const this_end_t_upper = this.upper_bound(curve_end_p.x);
         const this_end_t_lower = this.lower_bound(curve_end_p.x);
 
@@ -240,8 +242,8 @@ export class FlattenNode {
 
         // Otherwise, we've reached the end of our node! We can fill it
         const new_dirs = this.fill(
-            segments,
-            curve.end_seg_idx,
+            surface_curves,
+            curve.id_end,
             puzzle_tooth_width,
             puzzle_tooth_angle,
             bulk_head_segs
@@ -250,13 +252,13 @@ export class FlattenNode {
         // Once filled we can begin creating our new nodes. First we need to
         //  define the boundary between them
         const curve_bound = (dist: number) =>
-            curve.curve.find_dimm_dist(0, dist).p.y;
+            curve.t_curve.get_at_dimm_dist(0, dist).y;
 
         const child_draw_down = new FlattenNode(
             this.prefix,
             this.depth + 1,
             this.children.length,
-            curve.end_seg_idx,
+            curve.id_end,
             false,
             this.upper_nodes[this.upper_nodes.length - 1],
             new_dirs.draw_up_ref_dir,
@@ -270,7 +272,7 @@ export class FlattenNode {
             this.prefix,
             this.depth + 1,
             this.children.length,
-            curve.end_seg_idx,
+            curve.id_end,
             true,
             this.lower_nodes[this.lower_nodes.length - 1],
             new_dirs.draw_up_ref_dir,
@@ -287,40 +289,23 @@ export class FlattenNode {
     }
 
     fill(
-        segments: HullSegment[],
+        surface_curves: SurfaceCurve[],
         idx_end: number,
         puzzle_tooth_width: number,
         puzzle_tooth_angle: number,
         bulkheads: Set<number>
     ): FillResult {
-        console.log("\n==== FILLING NODE ====");
-        console.log(
-            "\nStart Segment            : ",
-            this.start_seg_idx,
-            "\nStart Segment Distance   : ",
-            segments[this.start_seg_idx].dist,
-            "\nEnd Segment              : ",
-            idx_end,
-            "\nEnd Segment Distance     : ",
-            segments[idx_end].dist,
-            "\nT Upper Start            : ",
-            this.upper_bound(segments[this.start_seg_idx].dist),
-            "\nT Lower Start            : ",
-            this.lower_bound(segments[this.start_seg_idx].dist)
+        let bounds_b = this.get_bounded_interval(
+            surface_curves[this.start_seg_idx].u
+        );
+        let bounds_a = this.get_bounded_interval(
+            surface_curves[this.start_seg_idx - 1].u
         );
 
-        if (this.start_seg_idx == idx_end) {
-            console.error("\n==== START SEG == END SEG ====")
-            throw new Error("Start Seg == End Seg");
-        }
-
-        let bounds_b = this.get_bounded_interval(segments[this.start_seg_idx]);
-        let bounds_a = this.get_bounded_interval(segments[this.start_seg_idx - 1]);
-
         let flattened = unroll_point_set(
-            segments[this.start_seg_idx - 1].hull_curve,
+            surface_curves[this.start_seg_idx - 1].c,
             bounds_a,
-            segments[this.start_seg_idx].hull_curve,
+            surface_curves[this.start_seg_idx].c,
             bounds_b,
             !this.draw_up,
             this.reference_point,
@@ -352,12 +337,12 @@ export class FlattenNode {
         bounds_b = bounds_a;
 
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
-            bounds_a = this.get_bounded_interval(segments[i]);
+            bounds_a = this.get_bounded_interval(surface_curves[i].u);
 
             flattened = unroll_point_set(
-                segments[i].hull_curve,
+                surface_curves[i].c,
                 bounds_a,
-                segments[i + 1].hull_curve,
+                surface_curves[i + 1].c,
                 bounds_b,
                 !this.draw_up,
                 flattened.a_flat[0],

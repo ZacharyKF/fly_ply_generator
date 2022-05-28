@@ -1,7 +1,8 @@
 import * as fs from "fs";
 import MakerJs, { IModel, IModelMap, exporter, IPathMap } from "makerjs";
 import { min, pi, tan } from "mathjs";
-import { RationalBezierHull } from "./rational_bezier_hull";
+import { BezierSurfaceHull } from "./bezier_surface_hull";
+import { RationalPlane } from "./rational_plane";
 import { Point3D } from "./rational_point";
 
 export interface FlattenResult {
@@ -24,30 +25,39 @@ export interface DrawableHull {
         lee: boolean,
         wind: boolean,
         puzzle_tooth_width: number,
-        puzzle_tooth_angle: number,
-        bulkheads: number[]
+        puzzle_tooth_angle: number
     ): FlattenResult;
-    draw_hull_curves(dimension: number, lee: boolean, wind: boolean): IModel;
-    draw_bulkhead(dist: number, idx: number): IModel;
+    draw_hull_curves(
+        draw_hull_curve_bezier: boolean,
+        dimension: number,
+        lee: boolean,
+        wind: boolean
+    ): IModel;
+    draw_transom(): IModel;
+    draw_bulkhead(idx: number): IModel;
     volume_under(dist: number): number;
 }
 
 // Drawing parameters
 let scale_up = 100;
-let slices = 100;
+let slices = 250;
 let segments_drawn = min(slices - 1, 75);
-let draw_main_curves = false;
-let draw_hull_curves = true;
+let draw_main_curves = true;
 let draw_segments = true;
-let draw_waterlines = false;
-let lee_draw = false;
+let draw_hull_curves = true;
+let draw_hull_curve_bezier = true;
+let draw_flattened = true;
+let draw_transom = true;
+let draw_waterlines = true;
+let draw_bulkheads = false; // TODO
+let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
 let variance_threshold = 0.7225;
+let colinearity_tolerance = -0.99;
 let max_segments = 5;
-let curve_colinearity_tolerance = -0.95;
 
 // Measurements for Aka, all in feet, degrees, or unitless
 let hull_length = 17;
@@ -73,15 +83,20 @@ lee_cut_width = lee_cut_width * asymmetry_lee;
 
 let weights: number[][] = [
     [1, 2.25, 1], // bilge curve
-    [1.25, 1.25], // lee special
-    [1.75, 1.75], // side default
+    [1, 1], // lee special
+    [1, 1], // side default
     [1, 1, 1, 1], // gunnel
 ];
 
-let bulk_heads: number[] = [
-    0.0,
-    hull_length_half / 3,
-    (2 * hull_length_half) / 3,
+let bulk_heads: RationalPlane[] = [
+    {
+        origin: new Point3D(3.0, 0, 0, 0),
+        direction: Point3D.X,
+    },
+    {
+        origin: new Point3D(6.0, 0, 0, 0),
+        direction: Point3D.X,
+    }
 ];
 
 let waterlines: number[] = [1, 1.25, 1.5, 1.75, 2];
@@ -168,14 +183,21 @@ let export_svg = (name: string, model: IModel) => {
     fs.writeFile(name + ".svg", svg, (_) => {});
 };
 
-let hull = new RationalBezierHull(
+// let hull = new RationalBezierHull(
+//     wind_curves,
+//     lee_curves,
+//     slices,
+//     meeting_point.x,
+//     variance_threshold,
+//     max_segments,
+//     colinearity_tolerance
+// );
+let hull = new BezierSurfaceHull(
     wind_curves,
     lee_curves,
-    slices,
-    meeting_point.x,
     variance_threshold,
     max_segments,
-    curve_colinearity_tolerance
+    bulk_heads,
 );
 
 let proj_maps: IModelMap[] = [{}, {}, {}];
@@ -195,25 +217,7 @@ let model: IModel = {
     models: model_map,
 };
 
-for (let i = 0; i < 3; i++) {
-    if (draw_main_curves) {
-        proj_maps[i]["main_curves"] = hull.draw_main_curves(i);
-    }
-    if (draw_segments) {
-        proj_maps[i]["hull_segments"] = hull.draw_segments(
-            i,
-            segments_drawn,
-            lee_draw,
-            wind_draw,
-            as_divisions
-        );
-    }
-    if (draw_hull_curves) {
-        proj_maps[i]["hull_curves"] = hull.draw_hull_curves(i, lee_draw, wind_draw);
-    }
-}
-
-if (draw_waterlines){
+if (draw_waterlines && waterlines.length > 0) {
     for (let i = 0; i < 3; i++) {
         if (i == 1) {
             continue;
@@ -226,7 +230,7 @@ if (draw_waterlines){
                 hull_width,
                 0
             );
-    
+
             let b: Point3D = new Point3D(0, hull_depth + wl, -hull_width, 1);
             paths["wl_" + i + "_" + idx] = {
                 layer: "aqua",
@@ -235,82 +239,121 @@ if (draw_waterlines){
         });
         projections[i].paths = paths;
     }
+
+    console.log("\n==== WATERLINES ====");
+    let water_line_volumes_ratio: number[] = [];
+    waterlines.forEach((w) => {
+        let volume = hull.volume_under(w + hull_depth) * 0.02831685;
+        water_line_volumes_ratio.push(volume);
+        console.log("Waterline    : " + w.toPrecision(4));
+        console.log("    => Volume    : " + volume.toPrecision(4) + " m3");
+        console.log(
+            "    => Displc.   : " + (volume * 1024).toPrecision(5) + " kg"
+        );
+    });
+
+    if (water_line_volumes_ratio.length > 1) {
+        console.log("\n==== WATERLINE VOLUME RATIOS ====");
+        for (let i = 1; i < water_line_volumes_ratio.length; i++) {
+            console.log(
+                (
+                    water_line_volumes_ratio[i] /
+                    water_line_volumes_ratio[i - 1]
+                ).toPrecision(4)
+            );
+        }
+    }
 }
+
+for (let i = 0; i < 3; i++) {
+    if (draw_segments) {
+        proj_maps[i][0] = hull.draw_segments(
+            i,
+            segments_drawn,
+            lee_draw,
+            wind_draw,
+            as_divisions
+        );
+    }
+    if (draw_hull_curves) {
+        proj_maps[i][1] = hull.draw_hull_curves(
+            draw_hull_curve_bezier,
+            i,
+            lee_draw,
+            wind_draw
+        );
+    }
+    if (draw_main_curves) {
+        proj_maps[i][2] = hull.draw_main_curves(i);
+    }
+}
+
 
 projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
 projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
 
-let { lee, wind, lee_panels, wind_panels } = hull.draw_flattened_hull(
-    lee_draw,
-    wind_draw,
-    puzzle_tooth_width,
-    puzzle_tooth_angle,
-    bulk_heads
-);
+if (draw_flattened) {
+    let { lee, wind, lee_panels, wind_panels } = hull.draw_flattened_hull(
+        lee_draw,
+        wind_draw,
+        puzzle_tooth_width,
+        puzzle_tooth_angle
+    );
 
-let x_offset = hull_length / 7;
+    let x_offset = hull_length / 7;
 
-if (lee_draw) {
-    let name = "lee_flat";
-    export_svg(name, lee);
-    lee = MakerJs.model.rotate(lee, -90);
-    lee = MakerJs.model.mirror(lee, true, true);
-    lee = MakerJs.model.move(lee, [
-        x_offset + gunnel_rise * 1.05,
-        hull_depth * 1.1,
-    ]);
-    model_map[name] = lee;
+    if (lee_draw) {
+        let name = "lee_flat";
+        export_svg(name, lee);
+        lee = MakerJs.model.rotate(lee, -90);
+        lee = MakerJs.model.mirror(lee, true, true);
+        lee = MakerJs.model.move(lee, [
+            x_offset + gunnel_rise * 1.05,
+            hull_depth * 1.1,
+        ]);
+        model_map[name] = lee;
 
-    lee_panels.forEach((panel, idx) => {
-        export_svg("lee_panel_" + idx, panel);
-    });
-}
-if (wind_draw) {
-    let name = "wind_flat";
-    export_svg(name, wind);
-    wind = MakerJs.model.rotate(wind, -90);
-    wind = MakerJs.model.mirror(wind, false, true);
-    wind = MakerJs.model.move(wind, [
-        x_offset - gunnel_rise * 1.05,
-        hull_depth * 1.1,
-    ]);
-    model_map[name] = wind;
+        lee_panels.forEach((panel, idx) => {
+            export_svg("lee_panel_" + idx, panel);
+        });
+    }
+    if (wind_draw) {
+        let name = "wind_flat";
+        export_svg(name, wind);
+        wind = MakerJs.model.rotate(wind, -90);
+        wind = MakerJs.model.mirror(wind, false, true);
+        wind = MakerJs.model.move(wind, [
+            x_offset - gunnel_rise * 1.05,
+            hull_depth * 1.1,
+        ]);
+        model_map[name] = wind;
 
-    wind_panels.forEach((panel, idx) => {
-        export_svg("wind_panel_" + idx, panel);
-    });
-}
-
-bulk_heads.forEach((dist, idx) => {
-    let bulk_head = hull.draw_bulkhead(dist, idx);
-    bulk_head = MakerJs.model.rotate(bulk_head, 90);
-    let name = "bulk_head_" + idx;
-    export_svg(name, bulk_head);
-    bulk_head.caption = undefined;
-    bulk_head = MakerJs.model.move(bulk_head, [
-        idx * hull_width * 1.1,
-        hull_width * 2 - hull_depth,
-    ]);
-    model_map[name] = bulk_head;
-});
-
-export_svg("hull_model", model);
-
-console.log("\n==== WATERLINES ====");
-let water_line_volumes_ratio: number[] = [];
-waterlines.forEach((w) => {
-    let volume = hull.volume_under(w + hull_depth) * 0.02831685;
-    water_line_volumes_ratio.push(volume);
-    console.log("Waterline    : " + w.toPrecision(4))
-    console.log("    => Volume    : " + volume.toPrecision(4) + " m3");
-    console.log("    => Displc.   : " + (volume * 1024).toPrecision(5) + " kg");
-});
-
-if (water_line_volumes_ratio.length > 1) {
-    console.log("\n==== WATERLINE VOLUME RATIOS ====");
-    for (let i = 1; i < water_line_volumes_ratio.length; i++) {
-        console.log(
-            (water_line_volumes_ratio[i] / water_line_volumes_ratio[i - 1]).toPrecision(4)
-        );
+        wind_panels.forEach((panel, idx) => {
+            export_svg("wind_panel_" + idx, panel);
+        });
     }
 }
+
+if (draw_transom) {
+    let transom = hull.draw_transom();
+    export_svg("transom", transom);
+    transom = MakerJs.model.move(transom, [-hull_width * 1.1, hull_width * 2 - hull_depth]);
+    model_map["transom"] = transom;
+}
+
+if (draw_bulkheads && bulk_heads.length > 0) {
+    bulk_heads.forEach((dist, idx) => {
+        let bulk_head = hull.draw_bulkhead(idx);
+        bulk_head = MakerJs.model.rotate(bulk_head, 90);
+        let name = "bulk_head_" + idx;
+        export_svg(name, bulk_head);
+        bulk_head.caption = undefined;
+        bulk_head = MakerJs.model.move(bulk_head, [
+            idx * hull_width * 1.1,
+            hull_width * 2 - hull_depth,
+        ]);
+        model_map[name] = bulk_head;
+    });
+}
+
+export_svg("hull_model", model);

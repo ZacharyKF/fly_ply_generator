@@ -4,7 +4,7 @@
 
 import { IModel, IModelMap, IPathMap, model, models, point } from "makerjs";
 import { abs, floor } from "mathjs";
-import { DrawableHull, FlattenResult } from "./boxed_hull_test";
+import { DrawableHull, FlattenResult } from "./hull_test";
 import { color_dark } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
 import { Point2D, Point3D } from "./rational_point";

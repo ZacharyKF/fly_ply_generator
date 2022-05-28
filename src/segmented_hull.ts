@@ -2,7 +2,7 @@ import { IModel, IModelMap } from "makerjs";
 import { abs, max, min, number, pi } from "mathjs";
 import PriorityQueue from "priority-queue-typescript";
 import { SortedQueue } from "sorted-queue";
-import { FlattenResult } from "./boxed_hull_test";
+import { FlattenResult } from "./hull_test";
 import { FlattenNode } from "./flatten_node";
 import { colinear_filter, points_to_imodel } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
@@ -235,9 +235,6 @@ export class SegmentedHull {
             segments: HullSegment[],
             curves: HullCurve[]
         ) => {
-            console.log("\n==== Populating Nodes ====");
-            console.log("Number of curves: ", curves.length);
-
             // We want to process the curves in order from closes to bow back
             let bezier_sort = (a: HullCurve, b: HullCurve) => {
                 return b.end_seg_idx - a.end_seg_idx;
