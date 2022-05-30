@@ -7,7 +7,7 @@ import {
     DivisionCurve,
     RationalBezierSurface,
 } from "./rational_bezier_surface";
-import { unroll_point_set } from "./rational_math";
+import { unroll_beziers, unroll_point_set } from "./rational_math";
 import { Point2D, Point3D } from "./rational_point";
 import { RationalPlane } from "./rational_plane";
 
@@ -17,6 +17,14 @@ export class BezierSurfaceHull implements DrawableHull {
             models: {
                 wind: this.surface_wind.draw_controls(dimm),
                 lee: this.surface_lee.draw_controls(dimm),
+                wind_bulkheads: {
+                    layer: "blue",
+                    ...this.surface_wind.draw_intersecting_lines(dimm),
+                },
+                lee_bulkheads: {
+                    layer: "blue",
+                    ...this.surface_lee.draw_intersecting_lines(dimm),
+                },
             },
         };
     }
@@ -89,6 +97,7 @@ export class BezierSurfaceHull implements DrawableHull {
             const ref_draw_up = b_last.axis_angle(0, t_last);
 
             const initial_node = new FlattenNode(
+                surface.intersecting_lines.length,
                 prefix,
                 0,
                 0,
@@ -116,8 +125,7 @@ export class BezierSurfaceHull implements DrawableHull {
                 surface.surface_curves,
                 sorted_curves,
                 puzzle_tooth_width,
-                puzzle_tooth_angle,
-                new Set()
+                puzzle_tooth_angle
             );
 
             const full_model_map = full_model.models;
@@ -126,7 +134,7 @@ export class BezierSurfaceHull implements DrawableHull {
                     node.bulkheads.forEach((line, b_id) => {
                         full_model_map["bulkhead_" + idx + "_" + b_id] = {
                             layer: "blue",
-                            ...points_to_imodel(2, true, line),
+                            ...points_to_imodel(2, false, line),
                         };
                     });
                     panels.push(node.draw_node());
@@ -172,7 +180,7 @@ export class BezierSurfaceHull implements DrawableHull {
         // Transom is simple an unroll of the first curves from both the lee and
         //  wind sides
         const full_interval = { start: 1, end: 0 };
-        const unroll = unroll_point_set(
+        const unroll = unroll_beziers(
             this.surface_lee.surface_curves[0].c,
             full_interval,
             this.surface_wind.surface_curves[0].c,
@@ -183,13 +191,11 @@ export class BezierSurfaceHull implements DrawableHull {
             false
         );
         return {
-            models: {
-                transom: points_to_imodel(
-                    0,
-                    true,
-                    unroll.a_flat.concat(unroll.b_flat.reverse())
-                ),
-            },
+            ...points_to_imodel(
+                0,
+                true,
+                unroll.a_flat.concat(unroll.b_flat.reverse())
+            ),
         };
     }
 
@@ -224,7 +230,22 @@ export class BezierSurfaceHull implements DrawableHull {
     }
 
     draw_bulkhead(idx: number): MakerJs.IModel {
-        throw new Error("Method not implemented.");
+        // Bulkheads, like the transom, are unrolled
+        const unroll = unroll_point_set(
+            this.surface_lee.intersecting_lines[idx],
+            this.surface_wind.intersecting_lines[idx],
+            false,
+            Point2D.Zero,
+            (3 * pi) / 2,
+            false
+        );
+        return {
+            ...points_to_imodel(
+                0,
+                true,
+                unroll.a_flat.concat(unroll.b_flat.reverse())
+            ),
+        };
     }
 
     surface_lee: RationalBezierSurface;
@@ -234,19 +255,19 @@ export class BezierSurfaceHull implements DrawableHull {
         lee_curves: Point3D[][],
         variance_tolerance: number,
         max_segments: number,
-        intersecting_planes: RationalPlane[],
+        intersecting_planes: RationalPlane[]
     ) {
         this.surface_lee = new RationalBezierSurface(
             lee_curves,
             variance_tolerance,
             max_segments,
-            intersecting_planes,
+            intersecting_planes
         );
         this.surface_wind = new RationalBezierSurface(
             wind_curves,
             variance_tolerance,
             max_segments,
-            intersecting_planes,
+            intersecting_planes
         );
     }
 }

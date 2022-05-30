@@ -18,12 +18,14 @@ export interface DivisionCurve {
 export interface SurfaceCurve {
     u: number;
     c: RationalBezier<Point3D>;
+    intersections: number[][];
 }
 
 export class RationalBezierSurface {
     control_curves: RationalBezier<Point3D>[];
     surface_curves: SurfaceCurve[];
     division_curves: DivisionCurve[];
+    intersecting_lines: Point3D[][];
 
     // Flattens the tip onto the plane. The reference direction serves as a
     //  basis for the direction from the tip, to the previous point in the top
@@ -51,7 +53,7 @@ export class RationalBezierSurface {
                 this.control_curves[0].controls.length - 1
             ];
         const top_last = last_c.c.controls[0];
-        const bot_last = last_c.c.get_internal(last_c.c.lut[1].t/4);
+        const bot_last = last_c.c.get_internal(last_c.c.lut[1].t / 4);
 
         const d_ct = p_last.dist(top_last);
         const t_last = p.flat_rotation(0, d_ct, direction);
@@ -123,6 +125,17 @@ export class RationalBezierSurface {
         return { models };
     }
 
+    draw_intersecting_lines(dimm: number): IModel {
+        const models: IModelMap = {};
+        for (let i = 0; i < this.intersecting_lines.length; i++) {
+            const line = this.intersecting_lines[i];
+            if (line.length > 0) {
+                models["bh_" + i] = points_to_imodel(dimm, false, line);
+            }
+        }
+        return { models };
+    }
+
     get_point_on_surface(u: number, t: number): Point3D {
         let u_id = floor(u * this.surface_curves.length);
 
@@ -149,7 +162,7 @@ export class RationalBezierSurface {
         controls: Point3D[][],
         variance_tolerance: number,
         max_segments: number,
-        intersecting_planes: RationalPlane[],
+        intersecting_planes: RationalPlane[]
     ) {
         // First make our control Beziers
         this.control_curves = controls.map((cs) => new RationalBezier(cs));
@@ -161,6 +174,15 @@ export class RationalBezierSurface {
                 divisions,
                 this.control_curves[i].get_min_resolution(0, 1)
             );
+        }
+
+        // For our intersecting planes, we need to traverse the surface curves
+        //  in order, and append valid intersections to the appropriate list.
+        //  We'll do this while creating the curves so that they can track
+        //  the t-values, then sort the list after
+        this.intersecting_lines = [];
+        for (let i = 0; i < intersecting_planes.length; i++) {
+            this.intersecting_lines.push([]);
         }
 
         // With that done, we can iteraritively make our internal curves, these
@@ -196,8 +218,33 @@ export class RationalBezierSurface {
                     ps,
                 });
             }
-            this.surface_curves[id] = { u, c: curve };
+
+            const curve_intersections: number[][] = [];
+
+            for (
+                let line_id = 0;
+                line_id < intersecting_planes.length;
+                line_id++
+            ) {
+                const line = this.intersecting_lines[line_id];
+                const plane = intersecting_planes[line_id];
+                const intersections = curve.find_plane_intersection(plane);
+                curve_intersections.push(intersections.map((i) => i.t));
+                line.push(...intersections.map((i) => i.p));
+            }
+            curve_intersections.forEach(l => l.sort().reverse());
+
+            this.surface_curves[id] = {
+                u,
+                c: curve,
+                intersections: curve_intersections,
+            };
         }
+        this.intersecting_lines.forEach((l) =>
+            l.sort((a, b) => {
+                return b.y - a.y;
+            })
+        );
 
         /**
          * With that done we can remap the divisors into curves and store them

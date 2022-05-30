@@ -49,14 +49,13 @@ let draw_hull_curve_bezier = true;
 let draw_flattened = true;
 let draw_transom = true;
 let draw_waterlines = true;
-let draw_bulkheads = false; // TODO
+let draw_bulkheads = true; // TODO
 let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
 let variance_threshold = 0.7225;
-let colinearity_tolerance = -0.99;
 let max_segments = 5;
 
 // Measurements for Aka, all in feet, degrees, or unitless
@@ -90,12 +89,12 @@ let weights: number[][] = [
 
 let bulk_heads: RationalPlane[] = [
     {
-        origin: new Point3D(3.0, 0, 0, 0),
-        direction: Point3D.X,
+        origin: new Point3D(2.0, 0, 0, 0),
+        direction: new Point3D(-2, -1, 0, 1).as_unit(),
     },
     {
         origin: new Point3D(6.0, 0, 0, 0),
-        direction: Point3D.X,
+        direction: new Point3D(2, -1, 0, 1).as_unit(),
     }
 ];
 
@@ -342,9 +341,8 @@ if (draw_transom) {
 }
 
 if (draw_bulkheads && bulk_heads.length > 0) {
-    bulk_heads.forEach((dist, idx) => {
+    bulk_heads.forEach((_, idx) => {
         let bulk_head = hull.draw_bulkhead(idx);
-        bulk_head = MakerJs.model.rotate(bulk_head, 90);
         let name = "bulk_head_" + idx;
         export_svg(name, bulk_head);
         bulk_head.caption = undefined;

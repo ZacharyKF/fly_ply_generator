@@ -10,7 +10,7 @@ import MakerJs, {
 import { abs, pi } from "mathjs";
 import { color_naturally } from "./makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
-import { unroll_point_set } from "./rational_math";
+import { unroll_beziers } from "./rational_math";
 import { Point2D, Point3D } from "./rational_point";
 
 let variance_tolerance = 10;
@@ -71,7 +71,7 @@ dimm_maps["c_points"] = {
     ...new models.Holes(0.025, casta_points),
 };
 
-let unroll = unroll_point_set(
+let unroll = unroll_beziers(
     rational_beziers[0],
     { start: 0, end: 1 },
     rational_beziers[1],

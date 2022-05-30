@@ -9,19 +9,24 @@ import {
     max,
     min,
     multiply,
+    sign,
     sqrt,
     transpose,
 } from "mathjs";
 import { binomial } from "./math";
-import { Point, Point2D } from "./rational_point";
+import { RationalPlane } from "./rational_plane";
+import { Point, Point2D, Point3D } from "./rational_point";
 import { RationalSegment } from "./rational_segment";
 
-const MAX_RESOLUTION = 150;
-const MIN_STEP = 1/MAX_RESOLUTION;
-const MIN_STEP_FACTOR = 2/3;
+const MAX_RESOLUTION = 1000;
+const MIN_STEP = 1 / MAX_RESOLUTION;
+const MIN_STEP_FACTOR = 2 / 3;
 
 export interface RationalLut<P extends Point> {
     p: P;
+    pv: P;
+    b_max: P;
+    b_min: P;
     t: number;
     d: number;
     angle: number;
@@ -35,9 +40,16 @@ export class RationalBezier<P extends Point> {
     length: number;
     resolution: number;
     segments: RationalSegment<P>[];
+    bounds_max: P;
+    bounds_min: P;
+    corners: P[];
 
     constructor(controls: P[]) {
         this.controls = controls;
+        this.bounds_max = <P>controls[0].max(controls[controls.length - 1]);
+        this.bounds_min = <P>controls[0].min(controls[controls.length - 1]);
+
+        const zero = <P>controls[0].zero();
 
         // Before constructing the lut we want to get an estimate of the length
         let length_estimate = 0;
@@ -46,13 +58,19 @@ export class RationalBezier<P extends Point> {
         }
         length_estimate = (length_estimate * 2) / 3;
         length_estimate += controls[0].dist(controls[controls.length - 1]) / 3;
-        this.resolution = min(MAX_RESOLUTION, floor(length_estimate/MIN_STEP))
+        this.resolution = min(
+            MAX_RESOLUTION,
+            floor(length_estimate / MIN_STEP)
+        );
 
         const length_step = length_estimate / this.resolution;
 
         // Now we want to create evenly spaced items along the curve
         let lut_last = {
             p: controls[0],
+            pv: zero,
+            b_min: zero,
+            b_max: zero,
             t: 0,
             d: 0,
             angle: 0,
@@ -67,7 +85,7 @@ export class RationalBezier<P extends Point> {
          *  to try and fit at the specified distance. The points only really
          *  need to be the "closest" to a particular distance.
          */
-        const guess_resolution = length_step / (this.resolution ** 2);
+        const guess_resolution = length_step / this.resolution ** 2;
         for (let i = 1; i < this.resolution; i++) {
             let high = 1;
             let low = lut_last.t;
@@ -93,8 +111,14 @@ export class RationalBezier<P extends Point> {
                 break;
             }
 
+            this.bounds_max = <P>this.bounds_max.max(p_guess);
+            this.bounds_min = <P>this.bounds_min.min(p_guess);
+
             let new_lut = {
                 p: p_guess,
+                pv: <P>p_guess.sub(lut_last.p).as_unit(),
+                b_min: <P>lut_last.p.min(p_guess),
+                b_max: <P>lut_last.p.max(p_guess),
                 t: mid,
                 d: lut_last.d + d_guess,
                 angle: 0,
@@ -105,9 +129,15 @@ export class RationalBezier<P extends Point> {
             lut_last = new_lut;
         }
 
+        this.corners = <P[]>this.bounds_min.corners(this.bounds_max);
+
         // We're okay with a bit of distance error at the end, pop the last one
+        const p_last = controls[controls.length - 1];
         this.lut.push({
-            p: controls[controls.length - 1],
+            p: p_last,
+            pv: <P>p_last.sub(lut_last.p).as_unit(),
+            b_min: <P>lut_last.p.min(p_last),
+            b_max: <P>lut_last.p.max(p_last),
             t: 1,
             d: controls[controls.length - 1].dist(lut_last.p) + lut_last.d,
             angle: 0,
@@ -249,7 +279,7 @@ export class RationalBezier<P extends Point> {
     }
 
     as_list(): P[] {
-        return this.lut.map(l => l.p);
+        return this.lut.map((l) => l.p);
     }
 
     // Just use every 10th point from the LUT
@@ -282,7 +312,7 @@ export class RationalBezier<P extends Point> {
         return { l: this.lut[mid], id: mid };
     }
 
-    // Quartenary search for lowest value
+    // Ternary search for lowest value
     find_smallest_on_curve(
         t_min: number,
         t_max: number,
@@ -388,6 +418,68 @@ export class RationalBezier<P extends Point> {
                 this.length,
             linear_dist
         );
+    }
+
+    find_plane_intersection(plane: RationalPlane): {
+        p: P;
+        t: number;
+    }[] {
+        let intersects = 0;
+        for (let i = 0; i < this.corners.length; i++) {
+            intersects += sign(
+                this.corners[i].sub(plane.origin).dot(plane.direction)
+            );
+        }
+        if (abs(intersects) == this.corners.length) {
+            return [];
+        }
+
+        const results: {
+            p: P;
+            t: number;
+        }[] = [];
+
+        for (let i = 1; i < this.lut.length; i++) {
+            const lut = this.lut[i];
+            const last = this.lut[i - 1];
+
+            let dot_lut = lut.p.sub(plane.origin).dot(plane.direction);
+            let dot_last = last.p.sub(plane.origin).dot(plane.direction);
+            
+            if (sign(dot_lut) == sign(dot_last)){
+                continue;
+            }
+            dot_lut = abs(dot_lut);
+            dot_last = abs(dot_last);
+
+            if (dot_lut < 1e-15) {
+                results.push({
+                    p: lut.p,
+                    t: lut.t,
+                });
+                continue;
+            }
+
+            if (dot_last < 1e-15) {
+                results.push({
+                    p: last.p,
+                    t: last.t,
+                });
+                continue;
+            }
+
+            // Relative distance of projection
+            const u = dot_lut/(dot_lut + dot_last);
+            const s = 1 - u;
+
+            // Linearily interpolate to get p & t
+            results.push({
+                p: <P>lut.p.mul(s).add(last.p.mul(u)),
+                t: (lut.t * s) + (last.t * u),
+            })
+           
+        }
+        return results;
     }
 
     // This method allows us to get the area in a particular direction between

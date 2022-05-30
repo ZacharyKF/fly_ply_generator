@@ -1,5 +1,5 @@
 import { IPoint } from "makerjs";
-import { abs, floor, min, sqrt } from "mathjs";
+import { abs, floor, max, min, sqrt } from "mathjs";
 import { RationalBezier } from "./rational_bezier";
 import { Point, Point2D, Point3D } from "./rational_point";
 import { Interval } from "./segmented_hull";
@@ -74,7 +74,7 @@ export interface UnrollResult {
 
 // p1 is the flattened point from the top right of the bezier, everything is unrolled from this point, it returns the
 //  flattened point arrays of both
-export function unroll_point_set(
+export function unroll_beziers(
     a: RationalBezier<Point3D>,
     interval_a: Interval,
     b: RationalBezier<Point3D>,
@@ -182,6 +182,140 @@ export function unroll_point_set(
     };
 }
 
+// p1 is the flattened point from the top right of the bezier, everything is unrolled from this point, it returns the
+//  flattened point arrays of both
+export function unroll_point_set(
+    a: Point3D[],
+    b: Point3D[],
+    reverse_points: boolean,
+    f2_init: Point2D,
+    f2f3_ang: number,
+    clockwise: boolean
+): UnrollResult {
+    /**
+     * CLOCKWISE
+     * a    b
+     * 1    2
+     *
+     * 4    3
+     *
+     * - f2f3_ang refers to the initial direction of f2 -> f3
+     * - clockwise refers to the rotational direction between f2f3_ang & vf2f1, the case above is the true case
+     *
+     * The return reference dir is the direction between f1 & f4 of the first quad
+     *
+     * COUNTER-CLOCKWISE
+     *
+     * 4    3
+     *
+     * 1    2
+     * a    b
+     */
+    let points_a: Point3D[] = [a[0]];
+    let points_b: Point3D[] = [b[0]];
+
+    const steps = max(points_a.length, points_b.length) * 10/ 3;
+    for(let i = 1; i < steps; i++) {
+        const t = i/steps;
+        points_a.push(interpolate_line(a, t));
+        points_b.push(interpolate_line(b, t));
+    }
+
+    points_a.push(a[a.length - 1]);
+    points_b.push(b[b.length - 1]);
+
+    if (reverse_points) {
+        points_a = points_a.reverse();
+        points_b = points_b.reverse();
+    }
+
+    // Our arrays to populate
+    let a_flat: Point2D[] = [];
+    let b_flat: Point2D[] = [];
+
+    // Initial points
+    let p1 = points_a[0];
+    let p2 = points_b[0];
+
+    // Calculate f2, this is a pretty similar operation to the loop body
+    let f2 = f2_init;
+    let f1 = Point2D.Zero;
+    {
+        let p3 = points_b[1];
+        let t2 = p3.sub(p2).angle(p1.sub(p2));
+        let d12 = p1.dist(p2);
+
+        if (clockwise) {
+            f1 = f2.flat_rotation(0, d12, f2f3_ang - t2);
+        } else {
+            f1 = f2.flat_rotation(0, d12, f2f3_ang + t2);
+        }
+    }
+
+    a_flat.push(f1);
+    b_flat.push(f2);
+
+    for (let i = 1; i < points_a.length; i++) {
+        let p4 = points_a[i];
+        let p3 = points_b[i];
+
+        let txf1 = f1.axis_angle(0, f2);
+        let txf2 = f2.axis_angle(0, f1);
+
+        let t1 = p2.sub(p1).angle(p4.sub(p1));
+        let t2 = p3.sub(p2).angle(p1.sub(p2));
+
+        let d14 = p1.dist(p4);
+        let d23 = p2.dist(p3);
+
+        if (clockwise) {
+            f1 = f1.flat_rotation(0, d14, txf1 - t1);
+            f2 = f2.flat_rotation(0, d23, txf2 + t2);
+        } else {
+            f1 = f1.flat_rotation(0, d14, txf1 + t1);
+            f2 = f2.flat_rotation(0, d23, txf2 - t2);
+        }
+
+        a_flat.push(f1);
+        b_flat.push(f2);
+
+        p1 = p4;
+        p2 = p3;
+    }
+
+    let f1f4_dir = a_flat[0].axis_angle(0, a_flat[1]);
+    let fnfn_less1_dir = a_flat[a_flat.length - 1].axis_angle(
+        0,
+        a_flat[a_flat.length - 2]
+    );
+
+    return {
+        a_flat,
+        b_flat,
+        f1f4_dir,
+        fnfn_less1_dir,
+    };
+}
+
 export function middle_value<T>(arr: T[]): T {
     return arr[floor(arr.length / 2)];
+}
+
+export function interpolate_line<P extends Point>(line: P[], t: number): P {
+    if (t <= 0) {
+        return line[0];
+    } else if (t >= 1) {
+        return line[line.length - 1];
+    }
+
+    const r = t * line.length;
+    const id = floor(r);
+
+    if (id >= (line.length - 1)) {
+        return line[line.length - 1];
+    }
+
+    const u = r - id;
+    const s = 1 - u;
+    return <P>line[id].mul(u).add(line[id + 1].mul(s));
 }

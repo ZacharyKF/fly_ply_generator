@@ -1,11 +1,14 @@
 import { IModel, IModelMap, model } from "makerjs";
+import { max, min } from "mathjs";
 import { points_to_imodel, point_path_to_puzzle_teeth } from "./makerjs_tools";
-import { RationalBezier } from "./rational_bezier";
-import { HullSegment } from "./rational_bezier_hull";
 import { DivisionCurve, SurfaceCurve } from "./rational_bezier_surface";
-import { middle_value, unroll_point_set } from "./rational_math";
-import { Point2D, Point3D } from "./rational_point";
-import { HullCurve, Interval } from "./segmented_hull";
+import {
+    interpolate_line,
+    middle_value,
+    unroll_beziers,
+} from "./rational_math";
+import { Point2D } from "./rational_point";
+import { Interval } from "./segmented_hull";
 
 export class FlattenNode {
     prefix: string;
@@ -25,6 +28,7 @@ export class FlattenNode {
     bulkheads: Point2D[][];
 
     constructor(
+        n_bulkheads: number,
         prefix: string,
         depth: number,
         idx: number,
@@ -50,6 +54,9 @@ export class FlattenNode {
         this.upper_nodes = [];
         this.lower_nodes = [];
         this.bulkheads = [];
+        for (let i = 0; i < n_bulkheads; i++) {
+            this.bulkheads.push([]);
+        }
         this.start = [];
     }
 
@@ -72,19 +79,22 @@ export class FlattenNode {
             to_draw.push(...[...this.start].reverse());
         }
 
-        let bulkheads: IModelMap = {};
+        const bulkheads: IModelMap = {};
         this.bulkheads.forEach((bulkhead, idx) => {
-            let model = points_to_imodel(2, false, bulkhead);
-            model.layer = "blue";
-            bulkheads["bulkhead_" + idx] = model;
+            if (bulkhead.length > 0) {
+                bulkheads["bulkhead_" + idx] = {
+                    layer: "blue",
+                    ...points_to_imodel(2, false, bulkhead),
+                };
+            }
         });
 
-        let box: IModel = {
+        const box: IModel = {
             ...points_to_imodel(2, false, to_draw),
             models: bulkheads,
         };
 
-        let caption_point = middle_value(this.upper_nodes)
+        const caption_point = middle_value(this.upper_nodes)
             .add(middle_value(this.lower_nodes))
             .div(2)
             .to_ipoint(2);
@@ -130,10 +140,10 @@ export class FlattenNode {
 
     append_segment(
         points: Point2D[],
+        curve: SurfaceCurve,
+        bounds: Interval,
         f1f4_dir: number,
-        fnfn_less1_dir: number,
-        seg_idx: number,
-        bulkheads: Set<number>
+        fnfn_less1_dir: number
     ) {
         if (this.draw_up) {
             this.upper_nodes.push(points[points.length - 1]);
@@ -147,9 +157,30 @@ export class FlattenNode {
             this.draw_down_ref_dir = f1f4_dir;
         }
 
-        if (bulkheads.has(seg_idx)) {
-            this.bulkheads.push(points);
-        }
+        const b_max = max(bounds.start, bounds.end);
+        const b_min = min(bounds.start, bounds.end);
+        const bounds_diff = b_max - b_min;
+        curve.intersections.forEach((intersects, idx) => {
+            // Make sure that intersections actually exist
+            if (intersects.length > 0) {
+                const bulkhead = this.bulkheads[idx];
+                intersects.forEach((t) => {
+                    // If they do, we also need to ensure that they are between the
+                    //  bounds
+                    if (t >= b_min && t <= b_max) {
+                        // Once we know they are, we can relavitize the t and
+                        //  interpolate the flat line
+                        const t_rel = (t - b_min) / bounds_diff;
+                        bulkhead.push(
+                            interpolate_line(
+                                points,
+                                this.draw_up ? t_rel : 1 - t_rel
+                            )
+                        );
+                    }
+                });
+            }
+        });
     }
 
     // Split the nodes recursively, consuming the nodes along the way to prevent
@@ -158,8 +189,7 @@ export class FlattenNode {
         surface_curves: SurfaceCurve[],
         curves: DivisionCurve[],
         puzzle_tooth_width: number,
-        puzzle_tooth_angle: number,
-        bulk_head_segs: Set<number>
+        puzzle_tooth_angle: number
     ) {
         // If we've reached the end, then fill ourselves and return
         if (curves.length == 0) {
@@ -167,8 +197,7 @@ export class FlattenNode {
                 surface_curves,
                 0,
                 puzzle_tooth_width,
-                puzzle_tooth_angle,
-                bulk_head_segs
+                puzzle_tooth_angle
             );
             return;
         }
@@ -182,8 +211,7 @@ export class FlattenNode {
                 surface_curves,
                 hull_curve,
                 puzzle_tooth_width,
-                puzzle_tooth_angle,
-                bulk_head_segs
+                puzzle_tooth_angle
             ).consumed;
         }
 
@@ -194,8 +222,7 @@ export class FlattenNode {
                 surface_curves,
                 0,
                 puzzle_tooth_width,
-                puzzle_tooth_angle,
-                bulk_head_segs
+                puzzle_tooth_angle
             );
             return;
         }
@@ -206,8 +233,7 @@ export class FlattenNode {
                 surface_curves,
                 curves_copy,
                 puzzle_tooth_width,
-                puzzle_tooth_angle,
-                bulk_head_segs
+                puzzle_tooth_angle
             )
         );
     }
@@ -218,8 +244,7 @@ export class FlattenNode {
         surface_curves: SurfaceCurve[],
         curve: DivisionCurve,
         puzzle_tooth_width: number,
-        puzzle_tooth_angle: number,
-        bulk_head_segs: Set<number>
+        puzzle_tooth_angle: number
     ): {
         consumed: boolean;
         nodes: FlattenNode[];
@@ -245,8 +270,7 @@ export class FlattenNode {
             surface_curves,
             curve.id_end,
             puzzle_tooth_width,
-            puzzle_tooth_angle,
-            bulk_head_segs
+            puzzle_tooth_angle
         );
 
         // Once filled we can begin creating our new nodes. First we need to
@@ -255,6 +279,7 @@ export class FlattenNode {
             curve.t_curve.get_at_dimm_dist(0, dist).y;
 
         const child_draw_down = new FlattenNode(
+            this.bulkheads.length,
             this.prefix,
             this.depth + 1,
             this.children.length,
@@ -269,6 +294,7 @@ export class FlattenNode {
         this.children.push(child_draw_down);
 
         const child_draw_up = new FlattenNode(
+            this.bulkheads.length,
             this.prefix,
             this.depth + 1,
             this.children.length,
@@ -292,8 +318,7 @@ export class FlattenNode {
         surface_curves: SurfaceCurve[],
         idx_end: number,
         puzzle_tooth_width: number,
-        puzzle_tooth_angle: number,
-        bulkheads: Set<number>
+        puzzle_tooth_angle: number
     ): FillResult {
         let bounds_b = this.get_bounded_interval(
             surface_curves[this.start_seg_idx].u
@@ -302,7 +327,7 @@ export class FlattenNode {
             surface_curves[this.start_seg_idx - 1].u
         );
 
-        let flattened = unroll_point_set(
+        let flattened = unroll_beziers(
             surface_curves[this.start_seg_idx - 1].c,
             bounds_a,
             surface_curves[this.start_seg_idx].c,
@@ -313,25 +338,27 @@ export class FlattenNode {
             !this.draw_up
         );
 
-        this.start = point_path_to_puzzle_teeth(
-            flattened.b_flat,
-            puzzle_tooth_width,
-            puzzle_tooth_angle
-        );
+        if (this.depth > 0) {
+            this.start = point_path_to_puzzle_teeth(
+                flattened.b_flat,
+                puzzle_tooth_width,
+                puzzle_tooth_angle
+            );
+        }
 
         this.append_segment(
             flattened.b_flat,
+            surface_curves[this.start_seg_idx],
+            bounds_b,
             flattened.f1f4_dir,
-            flattened.fnfn_less1_dir,
-            this.start_seg_idx,
-            bulkheads
+            flattened.fnfn_less1_dir
         );
         this.append_segment(
             flattened.a_flat,
+            surface_curves[this.start_seg_idx - 1],
+            bounds_a,
             flattened.f1f4_dir,
-            flattened.fnfn_less1_dir,
-            this.start_seg_idx - 1,
-            bulkheads
+            flattened.fnfn_less1_dir
         );
 
         bounds_b = bounds_a;
@@ -339,7 +366,7 @@ export class FlattenNode {
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
             bounds_a = this.get_bounded_interval(surface_curves[i].u);
 
-            flattened = unroll_point_set(
+            flattened = unroll_beziers(
                 surface_curves[i].c,
                 bounds_a,
                 surface_curves[i + 1].c,
@@ -352,10 +379,10 @@ export class FlattenNode {
 
             this.append_segment(
                 flattened.a_flat,
+                surface_curves[i],
+                bounds_a,
                 flattened.f1f4_dir,
-                flattened.fnfn_less1_dir,
-                i,
-                bulkheads
+                flattened.fnfn_less1_dir
             );
 
             bounds_b = bounds_a;

@@ -14,6 +14,10 @@ export interface Point {
     sub(other: Point): Point;
     dist(other: Point): number;
     mul(n: number): Point;
+    max(other: Point): Point;
+    min(other: Point): Point;
+    in_box(min: Point, max: Point): boolean;
+    corners(other: Point) : Point[];
     div(n: number): Point;
     diff_dimm(other: Point, dimm: number): number;
     set_dimm(n: number, dimm: number): Point;
@@ -60,6 +64,48 @@ export class Point3D implements Point {
             default:
                 return this.x - dist;
         }
+    }
+
+    max(other: Point3D): Point3D {
+        return new Point3D(
+            max(this.x, other.x),
+            max(this.y, other.y),
+            max(this.z, other.z),
+            max(this.w, other.w)
+        );
+    }
+
+    min(other: Point3D): Point3D {
+        return new Point3D(
+            min(this.x, other.x),
+            min(this.y, other.y),
+            min(this.z, other.z),
+            min(this.w, other.w)
+        );
+    }
+
+    in_box(min: Point3D, max: Point3D): boolean {
+        return (
+            this.x > min.x &&
+            this.x < max.x &&
+            this.y > min.y &&
+            this.y < max.y &&
+            this.z > min.z &&
+            this.z < max.z
+        );
+    }
+
+    corners(other: Point3D): Point3D[] {
+        return [
+            new Point3D(this.x, this.y, this.z, 1),
+            new Point3D(this.x, this.y, other.z, 1),
+            new Point3D(this.x, other.y, this.z, 1),
+            new Point3D(this.x, other.y, other.z, 1),
+            new Point3D(other.x, this.y, this.z, 1),
+            new Point3D(other.x, this.y, other.z, 1),
+            new Point3D(other.x, other.y, this.z, 1),
+            new Point3D(other.x, other.y, other.z, 1),
+        ];
     }
 
     zero(): Point3D {
@@ -286,6 +332,40 @@ export class Point2D implements Point {
             default:
                 return this.x - dist;
         }
+    }
+
+    max(other: Point2D): Point2D {
+        return new Point2D(
+            max(this.x, other.x),
+            max(this.y, other.y),
+            max(this.w, other.w)
+        );
+    }
+
+    min(other: Point2D): Point2D {
+        return new Point2D(
+            min(this.x, other.x),
+            min(this.y, other.y),
+            min(this.w, other.w)
+        );
+    }
+
+    in_box(min: Point3D, max: Point3D): boolean {
+        return (
+            this.x > min.x &&
+            this.x < max.x &&
+            this.y > min.y &&
+            this.y < max.y
+        );
+    }
+
+    corners(other: Point2D): Point2D[] {
+        return [
+            new Point2D(this.x, this.y, 1),
+            new Point2D(this.x, other.y, 1),
+            new Point2D(other.x, this.y, 1),
+            new Point2D(other.x, other.y, 1),
+        ];
     }
 
 
