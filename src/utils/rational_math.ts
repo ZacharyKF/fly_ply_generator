@@ -21,8 +21,8 @@ export function circle_center<T extends Point>(
 
     // helpers
     const iwsl2 = 1.0 / (2.0 * wsl);
-    const tt = t.magnitude * t.magnitude;
-    const uu = u.magnitude * u.magnitude;
+    const tt = t.magnitude() * t.magnitude();
+    const uu = u.magnitude() * u.magnitude();
 
     // result circle
     const center = a
@@ -161,7 +161,7 @@ export function interpolate_line<P extends Point>(line: P[], t: number): P {
 
     const u = l - l_id;
     const s = 1 - u;
-    return <P>line[l_id].mul(u).add(line[l_id + 1].mul(s));
+    return <P>line[l_id].mul(s).add(line[l_id + 1].mul(u));
 }
 
 // p1 is the flattened point from the top right of the bezier, everything is unrolled from this point, it returns the

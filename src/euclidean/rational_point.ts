@@ -2,12 +2,12 @@ import { IPoint } from "makerjs";
 import { abs, acos, cos, max, min, sin, sqrt } from "mathjs";
 
 export interface Point {
-    magnitude: number;
     x: number;
     y: number;
     w: number;
 
     dimm_dist_f(dimm: number, dist: number): number;
+    magnitude(): number;
     zero(): Point;
     cross_mag(other: Point): number;
     add(other: Point): Point;
@@ -45,14 +45,16 @@ export class Point3D implements Point {
     y: number;
     z: number;
     w: number;
-    magnitude: number;
 
     constructor(x: number, y: number, z: number, w: number) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.w = w;
-        this.magnitude = sqrt(x * x + y * y + z * z);
+    }
+
+    magnitude(): number {
+        return sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
     }
 
     dimm_dist_f(dimm: number, dist: number): number {
@@ -113,7 +115,7 @@ export class Point3D implements Point {
     }
 
     cross_mag(other: Point3D): number {
-        return this.cross(other).magnitude;
+        return this.cross(other).magnitude();
     }
 
     add(other: Point3D): Point3D {
@@ -135,7 +137,7 @@ export class Point3D implements Point {
     }
 
     dist(other: Point3D): number {
-        return this.sub(other).magnitude;
+        return this.sub(other).magnitude();
     }
 
     mul(n: number): Point3D {
@@ -190,7 +192,8 @@ export class Point3D implements Point {
     }
 
     co_vec(other: Point3D): Point3D {
-        return other.mul(this.dot(other) / (other.magnitude * other.magnitude));
+        const other_mag = other.magnitude();
+        return other.mul(this.dot(other) / (other_mag * other_mag));
     }
 
     rej_vec(other: Point3D): Point3D {
@@ -200,7 +203,7 @@ export class Point3D implements Point {
     dot(other: Point3D): number {
         let dot =
             (this.x * other.x + this.y * other.y + this.z * other.z) /
-            (this.magnitude * other.magnitude);
+            (this.magnitude() * other.magnitude());
         if (dot >= 1) {
             return 1;
         } else if (dot <= -1) {
@@ -235,7 +238,7 @@ export class Point3D implements Point {
     }
 
     as_unit(): Point3D {
-        return this.div(this.magnitude);
+        return this.div(this.magnitude());
     }
 
     get_axis(dimm: number): Point3D {
@@ -316,13 +319,15 @@ export class Point2D implements Point {
     x: number;
     y: number;
     w: number;
-    magnitude: number;
 
     constructor(x: number, y: number, w: number) {
         this.x = x;
         this.y = y;
         this.w = w;
-        this.magnitude = sqrt(x * x + y * y);
+    }
+
+    magnitude(): number {
+        return sqrt(this.x * this.x + this.y * this.y);
     }
 
     dimm_dist_f(dimm: number, dist: number): number {
@@ -394,7 +399,7 @@ export class Point2D implements Point {
     }
 
     dist(other: Point2D): number {
-        return this.sub(other).magnitude;
+        return this.sub(other).magnitude();
     }
 
     mul(n: number): Point2D {
@@ -443,7 +448,8 @@ export class Point2D implements Point {
     }
 
     co_vec(other: Point2D): Point2D {
-        return other.mul(this.dot(other) / (other.magnitude * other.magnitude));
+        const other_mag = other.magnitude();
+        return other.mul(this.dot(other) / (other_mag * other_mag));
     }
 
     rej_vec(other: Point2D): Point2D {
@@ -453,7 +459,7 @@ export class Point2D implements Point {
     dot(other: Point2D): number {
         let dot =
             (this.x * other.x + this.y * other.y) /
-            (this.magnitude * other.magnitude);
+            (this.magnitude() * other.magnitude());
         if (dot >= 1) {
             return 1;
         } else if (dot <= -1) {
@@ -476,7 +482,7 @@ export class Point2D implements Point {
     }
 
     as_unit(): Point2D {
-        return this.div(this.magnitude);
+        return this.div(this.magnitude());
     }
 
     get_axis(dimm: number): Point2D {

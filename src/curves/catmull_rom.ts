@@ -1,6 +1,6 @@
-import { Point2D } from "../euclidean/rational_point";
 import { floor } from "mathjs";
-import { Curve, WrappedCurve } from "./wrapped_curve";
+import { Point2D } from "../euclidean/rational_point";
+import { NormalizedCurve } from "./normalized_curve";
 
 interface CatMulSegment {
     a: Point2D;
@@ -9,91 +9,41 @@ interface CatMulSegment {
     p1: Point2D;
 }
 
-export class CatmullRom extends WrappedCurve<Point2D> {
-    split(t_split: number): {
-        upper: Curve<Point2D>;
-        lower: Curve<Point2D>;
-    } {
-        let points_upper: Point2D[] = [];
-        let points_lower: Point2D[] = [];
-
-        for (let i = 0; i < this.lut.length; i++) {
-            let p_upper = this.lut[this.lut.length - i - 1];
-            let p_lower = this.lut[i];
-
-            points_upper.push(p_upper.p);
-            points_lower.push(p_lower.p);
-
-            if (p_upper.t < t_split && p_lower.t > t_split) {
-                break;
-            }
-        }
-
-        return {
-            upper: new CatmullRom(
-                points_upper,
-                this.alpha,
-                this.tension,
-                false
-            ),
-            lower: new CatmullRom(
-                points_lower,
-                this.alpha,
-                this.tension,
-                false
-            ),
-        };
-    }
-
-    split_segment(t_lower: number, t_upper: number): Curve<Point2D> {
-        let points_segment: Point2D[] = [];
-
-        for (let i = 1; i < this.lut.length; i++) {
-            if (this.lut[i].t > t_lower) {
-                points_segment.push(this.lut[i - 1].p);
-            }
-
-            if (this.lut[i].t > t_upper) {
-                points_segment.push(this.lut[i].p);
-                points_segment.push(this.lut[i + 1].p);
-            }
-        }
-
-        return new CatmullRom(points_segment, this.alpha, this.tension, false);
-    }
-
+export class CatmullRom extends NormalizedCurve<Point2D> {
     public segments: CatMulSegment[];
-    points: Point2D[];
+    controls: Point2D[];
     alpha: number;
     tension: number;
 
     constructor(
-        points: Point2D[],
+        controls: Point2D[],
         alpha: number,
         tension: number,
         flip_ends: boolean
     ) {
-        super();
-        this.points = points;
+        super(<Point2D>controls[1].zero());
+        this.controls = controls;
         this.alpha = alpha;
         this.tension = tension;
         if (flip_ends) {
-            points.unshift(points[0].add(points[1].sub(points[0])));
+            controls.unshift(controls[0].add(controls[1].sub(controls[0])));
 
-            points.push(
-                points[points.length - 1].add(
-                    points[points.length - 2].sub(points[points.length - 1])
+            controls.push(
+                controls[controls.length - 1].add(
+                    controls[controls.length - 2].sub(
+                        controls[controls.length - 1]
+                    )
                 )
             );
         }
 
         const s = 1 - tension;
         const segments: CatMulSegment[] = [];
-        for (let i = 1; i < points.length - 2; i++) {
-            const p0 = points[i - 1];
-            const p1 = points[i];
-            const p2 = points[i + 1];
-            const p3 = points[i + 2];
+        for (let i = 1; i < controls.length - 2; i++) {
+            const p0 = controls[i - 1];
+            const p1 = controls[i];
+            const p2 = controls[i + 1];
+            const p3 = controls[i + 2];
 
             const t01 = p0.dist(p1) ** alpha;
             const t12 = p1.dist(p2) ** alpha;
@@ -146,16 +96,16 @@ export class CatmullRom extends WrappedCurve<Point2D> {
         this.populate_lut();
     }
 
-    get(t: number): Point2D {
+    get_internal(t: number): Point2D {
         const t_rel = t * this.segments.length;
         const t_idx = floor(t_rel);
-        
+
         if (t_idx <= 0) {
-            return this.points[1];
+            return this.controls[1];
         } else if (t_idx >= this.segments.length) {
-            return this.points[this.points.length - 2];
+            return this.controls[this.controls.length - 2];
         }
-        
+
         const t_seg = t_rel - t_idx;
         return this.get_segment(this.segments[t_idx], t_seg);
     }
