@@ -59,13 +59,7 @@ export class CatmullRom extends NormalizedCurve<Point2D> {
                         .mul(t12)
                 )
                 .mul(s);
-            // (
-            //     p2 - p1 +
-            //     (
-            //         (p1 - p0) / t01 -
-            //         (p2 - p0) / (t01 + t12)
-            //     ) * t12
-            // ) * (1.0f - tension);
+                
             const m2 = p2
                 .sub(p1)
                 .add(
@@ -76,13 +70,6 @@ export class CatmullRom extends NormalizedCurve<Point2D> {
                         .mul(t12)
                 )
                 .mul(s);
-            // (
-            //     p2 - p1 +
-            //     (
-            //         (p3 - p2) / t23 -
-            //         (p3 - p1) / (t12 + t23)
-            //     ) * t12
-            // ) * (1.0f - tension);
 
             segments.push({
                 a: p1.sub(p2).mul(2).add(m1).add(m2),

@@ -171,7 +171,6 @@ if (draw_flattened) {
     if (lee_draw) {
         let name = "lee_flat";
         export_svg(name, lee);
-        lee = MakerJs.model.mirror(lee, false, false);
         let x = bounds_lee.max.x - bounds_lee.min.x;
         lee = MakerJs.model.move(lee, [x, y]);
         model_map[name] = lee;
@@ -183,9 +182,8 @@ if (draw_flattened) {
     if (wind_draw) {
         let name = "wind_flat";
         export_svg(name, wind);
-        y += -(bounds_lee.max.y - bounds_lee.min.y);
-        wind = MakerJs.model.mirror(wind, false, false);
         wind = MakerJs.model.rotate(wind, 180);
+        y += -(bounds_lee.max.y - bounds_lee.min.y) * 1.5;
         wind = MakerJs.model.move(wind, [0, y]);
         model_map[name] = wind;
 

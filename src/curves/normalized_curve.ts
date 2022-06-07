@@ -15,9 +15,9 @@ export interface RationalLut<P extends Point> {
     aa: number;
 }
 
-export const MAX_RESOLUTION = 750;
+export const MAX_RESOLUTION = 250;
 export const MIN_STEP = 1 / MAX_RESOLUTION;
-export const MIN_STEP_FACTOR = 1 / 3;
+export const MIN_STEP_FACTOR = 4 / 5;
 
 export abstract class NormalizedCurve<P extends Point> {
     length: number = 0;

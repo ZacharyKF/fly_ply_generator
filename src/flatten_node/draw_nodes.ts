@@ -80,14 +80,17 @@ export function try_split(
     // Otherwise, we've reached the end of our node! We can fill it
     const new_dirs = node.fill(
         surface_curves,
-        curve.id_end + 1,
+        curve.id_end,
         puzzle_tooth_width,
         puzzle_tooth_angle
     );
 
     // Once filled we can begin creating our new nodes. First we need to
     //  define the boundary between them
-    const curve_bound = (u: number) => curve.t_curve.find_dimm_dist(0, u).p.y;
+    const max_u = surface_curves[curve.id_end].u;
+    const curve_bound = (u: number) => {
+        return curve.t_curve.get(u/max_u).y;
+    };
 
     const child_draw_down = new UpperNode(
         node.bulkheads.length,
