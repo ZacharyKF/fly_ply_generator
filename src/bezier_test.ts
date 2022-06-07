@@ -8,10 +8,10 @@ import MakerJs, {
     models,
 } from "makerjs";
 import { abs, pi } from "mathjs";
-import { color_naturally } from "./makerjs_tools";
-import { RationalBezier } from "./rational_bezier";
-import { unroll_beziers } from "./rational_math";
-import { Point2D, Point3D } from "./rational_point";
+import { color_naturally, points_to_imodel } from "./utils/makerjs_tools";
+import { RationalBezier } from "./curves/rational_bezier";
+import { unroll_beziers } from "./utils/rational_math";
+import { Point2D, Point3D } from "./euclidean/rational_point";
 
 let variance_tolerance = 10;
 
@@ -42,8 +42,6 @@ for (let d = 0; d < 3; d++) {
 }
 
 let segments = rational_beziers[0].find_segments(variance_tolerance, 1, 40);
-console.log("Number of segment: " + segments.length);
-
 let t_points: IPoint[] = [];
 let casta_points: IPoint[] = [];
 let dimm_paths: IPathMap = {};
@@ -79,30 +77,25 @@ let unroll = unroll_beziers(
     false,
     Point2D.Zero,
     pi / 2,
-    false
+    Point2D.X,
 );
 
-let test_dist = 0;
-rational_beziers[0].lut.forEach((l) => {
-    let t_actual = l.t;
-    let t_test = l.d / rational_beziers[0].length;
-    test_dist += abs(t_actual - rational_beziers[0].map_t(t_test));
-});
-console.log("DISTANCE TEST => ", test_dist);
+const a_tests = [points_to_imodel(0, false, unroll.a_flat)];
+a_tests.forEach((m) => (m.layer = "green"));
 
 dimm_maps["a_points"] = {
-    layer: "green",
-    ...new models.ConnectTheDots(
-        false,
-        unroll.a_flat.map((p) => p.to_ipoint(2))
-    ),
+    models: {
+        a: a_tests[0],
+    },
 };
+
+const b_tests = [points_to_imodel(0, false, unroll.b_flat)];
+b_tests.forEach((m) => (m.layer = "blue"));
+
 dimm_maps["b_points"] = {
-    layer: "blue",
-    ...new models.ConnectTheDots(
-        false,
-        unroll.b_flat.map((p) => p.to_ipoint(2))
-    ),
+    models: {
+        a: b_tests[0],
+    },
 };
 
 export_svg("bezier_test", {

@@ -1,6 +1,6 @@
 import { IModel, IPath, IPathArc, IPoint, models, paths } from "makerjs";
 import { abs, floor, pi, pow, sqrt } from "mathjs";
-import { Point, Point2D, Point3D } from "./rational_point";
+import { Point, Point2D, Point3D } from "../euclidean/rational_point";
 
 export function colinear_filter<T>(
     datum: T[],

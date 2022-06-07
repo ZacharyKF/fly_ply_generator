@@ -13,14 +13,14 @@ import {
     sqrt,
     transpose,
 } from "mathjs";
-import { binomial } from "./math";
-import { RationalPlane } from "./rational_plane";
-import { Point, Point2D, Point3D } from "./rational_point";
+import { binomial } from "../utils/rational_math";
+import { RationalPlane } from "../euclidean/rational_plane";
+import { Point, Point2D } from "../euclidean/rational_point";
 import { RationalSegment } from "./rational_segment";
 
-const MAX_RESOLUTION = 1000;
+const MAX_RESOLUTION = 1500;
 const MIN_STEP = 1 / MAX_RESOLUTION;
-const MIN_STEP_FACTOR = 2 / 3;
+const MIN_STEP_FACTOR = 1 / 3;
 
 export interface RationalLut<P extends Point> {
     p: P;
@@ -445,8 +445,8 @@ export class RationalBezier<P extends Point> {
 
             let dot_lut = lut.p.sub(plane.origin).dot(plane.direction);
             let dot_last = last.p.sub(plane.origin).dot(plane.direction);
-            
-            if (sign(dot_lut) == sign(dot_last)){
+
+            if (sign(dot_lut) == sign(dot_last)) {
                 continue;
             }
             dot_lut = abs(dot_lut);
@@ -469,15 +469,14 @@ export class RationalBezier<P extends Point> {
             }
 
             // Relative distance of projection
-            const u = dot_lut/(dot_lut + dot_last);
+            const u = dot_lut / (dot_lut + dot_last);
             const s = 1 - u;
 
             // Linearily interpolate to get p & t
             results.push({
                 p: <P>lut.p.mul(s).add(last.p.mul(u)),
-                t: (lut.t * s) + (last.t * u),
-            })
-           
+                t: lut.t * s + last.t * u,
+            });
         }
         return results;
     }

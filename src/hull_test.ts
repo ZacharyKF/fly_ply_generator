@@ -1,47 +1,20 @@
 import * as fs from "fs";
 import MakerJs, { IModel, IModelMap, exporter, IPathMap } from "makerjs";
-import { min, pi, tan } from "mathjs";
-import { BezierSurfaceHull } from "./bezier_surface_hull";
-import { RationalPlane } from "./rational_plane";
-import { Point3D } from "./rational_point";
+import { abs, min, pi, tan } from "mathjs";
+import { BezierSurfaceHull } from "./hulls/bezier_surface_hull";
+import { get_debug_proa } from "./hulls/debug_proa";
+import { get_fogo_island_gunning_punt } from "./hulls/fogo_gunning_punt";
+import { RationalBounds } from "./euclidean/rational_bounds";
+import { RationalPlane } from "./euclidean/rational_plane";
+import { Point2D, Point3D } from "./euclidean/rational_point";
 
-export interface FlattenResult {
-    lee: IModel;
-    wind: IModel;
-    lee_panels: IModel[];
-    wind_panels: IModel[];
-}
-
-export interface DrawableHull {
-    draw_main_curves(dimm: number): IModel;
-    draw_segments(
-        dimm: number,
-        number_segs: number,
-        lee: boolean,
-        wind: boolean,
-        as_divisions: boolean
-    ): IModel;
-    draw_flattened_hull(
-        lee: boolean,
-        wind: boolean,
-        puzzle_tooth_width: number,
-        puzzle_tooth_angle: number
-    ): FlattenResult;
-    draw_hull_curves(
-        draw_hull_curve_bezier: boolean,
-        dimension: number,
-        lee: boolean,
-        wind: boolean
-    ): IModel;
-    draw_transom(): IModel;
-    draw_bulkhead(idx: number): IModel;
-    volume_under(dist: number): number;
-}
+// The hull
+const { transom, bulk_heads, waterlines, wind, lee , panels} =
+    get_fogo_island_gunning_punt(); //get_debug_proa(); //;
 
 // Drawing parameters
 let scale_up = 100;
 let slices = 250;
-let segments_drawn = min(slices - 1, 75);
 let draw_main_curves = true;
 let draw_segments = true;
 let draw_hull_curves = true;
@@ -49,154 +22,42 @@ let draw_hull_curve_bezier = true;
 let draw_flattened = true;
 let draw_transom = true;
 let draw_waterlines = true;
-let draw_bulkheads = true; // TODO
+let draw_bulkheads = true;
 let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;
 
 // Hull division parameters
-let variance_threshold = 0.7225;
-let max_segments = 5;
-
-// Measurements for Aka, all in feet, degrees, or unitless
-let hull_length = 17;
-let hull_ratio = 1.0 / 9;
-let hull_width = hull_length * hull_ratio;
-let bow_rake = -15;
-let asymmetry_wind = 4 / 7;
-let gunnel_jump = 7.5 / 14;
-let horizontal_flat = 4 / 5;
-let vertical_flat = 3 / 5;
-let lee_cut_depth = 3 / 5;
-let lee_cut_width = 2 / 5;
-let hull_depth = -2.25;
-let gunnel_rise = 0.5;
-let puzzle_tooth_width = hull_depth / 30;
+let puzzle_tooth_width = 2.5 / 30;
 let puzzle_tooth_angle = (10 * pi) / 180;
 
-// Derived
-let rake_rad = (bow_rake * pi) / 180.0;
-let hull_length_half = hull_length / 2.0;
-let asymmetry_lee = asymmetry_wind - 1.0;
-lee_cut_width = lee_cut_width * asymmetry_lee;
-
-let weights: number[][] = [
-    [1, 2.25, 1], // bilge curve
-    [1, 1], // lee special
-    [1, 1], // side default
-    [1, 1, 1, 1], // gunnel
-];
-
-let bulk_heads: RationalPlane[] = [
-    {
-        origin: new Point3D(2.0, 0, 0, 0),
-        direction: new Point3D(-2, -1, 0, 1).as_unit(),
-    },
-    {
-        origin: new Point3D(6.0, 0, 0, 0),
-        direction: new Point3D(2, -1, 0, 1).as_unit(),
-    }
-];
-
-let waterlines: number[] = [1, 1.25, 1.5, 1.75, 2];
-
-let meeting_point = new Point3D(
-    hull_length_half + gunnel_rise * tan(rake_rad),
-    gunnel_rise,
-    0.0,
-    weights[0][2]
-);
-
-// ADD FROM BOTTOM TO TOP
-let lee_curves: Point3D[][] = [];
-let wind_curves: Point3D[][] = [];
-
-// Pull towards the bow to increase waterline
-let bilge_curve: Point3D[] = [
-    new Point3D(0.0, hull_depth, 0.0, weights[0][0]),
-    new Point3D(
-        hull_length_half - hull_depth * tan((bow_rake * pi) / 180.0),
-        hull_depth,
-        0.0,
-        weights[0][1]
-    ),
-    meeting_point,
-];
-lee_curves.push(bilge_curve);
-wind_curves.push(bilge_curve);
-
-// This special curve causes the inversion on the lee-side, increasing the
-//  hydrofoil effect, while reducing the initial buoyancy, enabling waterline
-//  consistency between loads
-let special_curve_lee: Point3D[] = [
-    new Point3D(0.0, hull_depth * lee_cut_depth, lee_cut_width, weights[1][0]),
-    new Point3D(
-        hull_length_half * horizontal_flat,
-        hull_depth * lee_cut_depth,
-        lee_cut_width,
-        weights[1][1]
-    ),
-    meeting_point,
-];
-lee_curves.push(special_curve_lee);
-
-// Side curves are a simple curve along the side to help control the
-//  "pointy-ness" of the hull
-let side_default: Point3D[] = [
-    new Point3D(0.0, hull_depth * vertical_flat, hull_width, weights[2][0]),
-    new Point3D(
-        hull_length_half * horizontal_flat,
-        hull_depth * vertical_flat,
-        hull_width,
-        weights[2][1]
-    ),
-    meeting_point,
-];
-lee_curves.push(side_default.map((p) => p.mul_dimm(asymmetry_lee, 2)));
-wind_curves.push(side_default.map((p) => p.mul_dimm(asymmetry_wind, 2)));
-
-// Gunnel curves get added last, they need to be converted like the side curves
-let gunnel_default: Point3D[] = [
-    new Point3D(0.0, 0.0, hull_width, weights[3][0]),
-    new Point3D(gunnel_jump * hull_length_half, 0.0, hull_width, weights[3][1]),
-    new Point3D(
-        gunnel_jump * hull_length_half,
-        gunnel_rise,
-        hull_width,
-        weights[3][2]
-    ),
-    new Point3D(
-        horizontal_flat * hull_length_half,
-        gunnel_rise,
-        hull_width,
-        weights[3][3]
-    ),
-    meeting_point,
-];
-lee_curves.push(gunnel_default.map((p) => p.mul_dimm(asymmetry_lee, 2)));
-wind_curves.push(gunnel_default.map((p) => p.mul_dimm(asymmetry_wind, 2)));
-
+// ACTUAL CODE
+let segments_drawn = min(slices - 1, 75);
 let export_svg = (name: string, model: IModel) => {
     let to_export = MakerJs.model.scale(MakerJs.model.clone(model), scale_up);
     var svg = exporter.toSVG(to_export);
     fs.writeFile(name + ".svg", svg, (_) => {});
 };
 
-// let hull = new RationalBezierHull(
-//     wind_curves,
-//     lee_curves,
-//     slices,
-//     meeting_point.x,
-//     variance_threshold,
-//     max_segments,
-//     colinearity_tolerance
-// );
+const bounds = new RationalBounds(Point3D.Zero);
+const consume_line = (line: Point3D[]) => {
+    line.forEach((p) => bounds.consume(p));
+};
+wind.forEach(consume_line);
+lee.forEach(consume_line);
+const hull_width = abs(bounds.max.z - bounds.min.z);
+const hull_length = abs(bounds.max.x - bounds.min.x);
+const hull_depth = abs(bounds.max.y - bounds.min.y);
+
+const grid_x = 1.05 * hull_length;
+const grid_y = 1.05 * hull_depth;
+const grid_z = 1.05 * hull_width;
+
 let hull = new BezierSurfaceHull(
-    wind_curves,
-    lee_curves,
-    variance_threshold,
-    max_segments,
-    bulk_heads,
+    wind,
+    lee,
+    panels,
+    bulk_heads
 );
 
 let proj_maps: IModelMap[] = [{}, {}, {}];
@@ -223,14 +84,14 @@ if (draw_waterlines && waterlines.length > 0) {
         }
         let paths: IPathMap = {};
         waterlines.forEach((wl, idx) => {
-            let a: Point3D = new Point3D(
-                hull_length_half,
-                hull_depth + wl,
-                hull_width,
+            let a: Point3D = new Point3D(grid_x, wl, bounds.max.z * 1.05, 0);
+
+            let b: Point3D = new Point3D(
+                hull_length - grid_x,
+                wl,
+                bounds.max.z * -1.05,
                 0
             );
-
-            let b: Point3D = new Point3D(0, hull_depth + wl, -hull_width, 1);
             paths["wl_" + i + "_" + idx] = {
                 layer: "aqua",
                 ...new MakerJs.paths.Line(a.to_ipoint(i), b.to_ipoint(i)),
@@ -242,7 +103,7 @@ if (draw_waterlines && waterlines.length > 0) {
     console.log("\n==== WATERLINES ====");
     let water_line_volumes_ratio: number[] = [];
     waterlines.forEach((w) => {
-        let volume = hull.volume_under(w + hull_depth) * 0.02831685;
+        let volume = hull.volume_under(w) * 0.02831685;
         water_line_volumes_ratio.push(volume);
         console.log("Waterline    : " + w.toPrecision(4));
         console.log("    => Volume    : " + volume.toPrecision(4) + " m3");
@@ -287,29 +148,32 @@ for (let i = 0; i < 3; i++) {
     }
 }
 
-
-projections[0] = MakerJs.model.move(projections[0], [-hull_width, 0]);
-projections[1] = MakerJs.model.move(projections[1], [0, hull_width]);
+let y = -hull_depth;
+projections[0] = MakerJs.model.move(MakerJs.model.rotate(projections[0], 90), [
+    grid_z / 2,
+    y,
+]);
+y += -grid_z / 2;
+projections[1] = MakerJs.model.move(projections[1], [0, y]);
+y += -grid_y - grid_z / 2;
+projections[2] = MakerJs.model.move(projections[2], [0, y]);
 
 if (draw_flattened) {
-    let { lee, wind, lee_panels, wind_panels } = hull.draw_flattened_hull(
+    let { lee, wind, lee_panels, wind_panels, bounds_lee, bounds_wind } = hull.draw_flattened_hull(
         lee_draw,
         wind_draw,
         puzzle_tooth_width,
         puzzle_tooth_angle
     );
 
-    let x_offset = hull_length / 7;
+    y += hull_depth - grid_y;
 
     if (lee_draw) {
         let name = "lee_flat";
         export_svg(name, lee);
-        lee = MakerJs.model.rotate(lee, -90);
-        lee = MakerJs.model.mirror(lee, true, true);
-        lee = MakerJs.model.move(lee, [
-            x_offset + gunnel_rise * 1.05,
-            hull_depth * 1.1,
-        ]);
+        lee = MakerJs.model.mirror(lee, false, false);
+        let x = bounds_lee.max.x - bounds_lee.min.x;
+        lee = MakerJs.model.move(lee, [x, y]);
         model_map[name] = lee;
 
         lee_panels.forEach((panel, idx) => {
@@ -319,12 +183,10 @@ if (draw_flattened) {
     if (wind_draw) {
         let name = "wind_flat";
         export_svg(name, wind);
-        wind = MakerJs.model.rotate(wind, -90);
-        wind = MakerJs.model.mirror(wind, false, true);
-        wind = MakerJs.model.move(wind, [
-            x_offset - gunnel_rise * 1.05,
-            hull_depth * 1.1,
-        ]);
+        y += -(bounds_lee.max.y - bounds_lee.min.y);
+        wind = MakerJs.model.mirror(wind, false, false);
+        wind = MakerJs.model.rotate(wind, 180);
+        wind = MakerJs.model.move(wind, [0, y]);
         model_map[name] = wind;
 
         wind_panels.forEach((panel, idx) => {
@@ -333,25 +195,77 @@ if (draw_flattened) {
     }
 }
 
-if (draw_transom) {
+if (draw_transom && transom) {
     let transom = hull.draw_transom();
     export_svg("transom", transom);
-    transom = MakerJs.model.move(transom, [-hull_width * 1.1, hull_width * 2 - hull_depth]);
+    transom = MakerJs.model.move(transom, [grid_z, 0]);
     model_map["transom"] = transom;
 }
 
 if (draw_bulkheads && bulk_heads.length > 0) {
+    let y = 0;
+    let x = grid_z;
+    if (draw_transom && transom) {
+        x += grid_z;
+    }
     bulk_heads.forEach((_, idx) => {
         let bulk_head = hull.draw_bulkhead(idx);
         let name = "bulk_head_" + idx;
         export_svg(name, bulk_head);
         bulk_head.caption = undefined;
-        bulk_head = MakerJs.model.move(bulk_head, [
-            idx * hull_width * 1.1,
-            hull_width * 2 - hull_depth,
-        ]);
+        bulk_head = MakerJs.model.move(bulk_head, [x, y]);
+        x += grid_z;
         model_map[name] = bulk_head;
     });
 }
 
 export_svg("hull_model", model);
+
+export interface FlattenResult {
+    lee: IModel;
+    wind: IModel;
+    lee_panels: IModel[];
+    wind_panels: IModel[];
+    bounds_lee: RationalBounds<Point2D>;
+    bounds_wind: RationalBounds<Point2D>;
+}
+
+export interface HullShape {
+    transom: boolean;
+    bulk_heads: RationalPlane[];
+    waterlines: number[];
+    lee: Point3D[][];
+    wind: Point3D[][];
+    panels: PanelSplits[];
+}
+
+export interface DrawableHull {
+    draw_main_curves(dimm: number): IModel;
+    draw_segments(
+        dimm: number,
+        number_segs: number,
+        lee: boolean,
+        wind: boolean,
+        as_divisions: boolean
+    ): IModel;
+    draw_flattened_hull(
+        lee: boolean,
+        wind: boolean,
+        puzzle_tooth_width: number,
+        puzzle_tooth_angle: number
+    ): FlattenResult;
+    draw_hull_curves(
+        draw_hull_curve_bezier: boolean,
+        dimension: number,
+        lee: boolean,
+        wind: boolean
+    ): IModel;
+    draw_transom(): IModel;
+    draw_bulkhead(idx: number): IModel;
+    volume_under(dist: number): number;
+}
+
+export interface PanelSplits {
+    t: number;
+    n: number;
+}

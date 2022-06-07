@@ -1,11 +1,10 @@
 import { IPath } from "makerjs";
-import { abs, floor, min } from "mathjs";
-import { RationalArc } from "./rational_arc";
+import { RationalArc } from "../euclidean/rational_arc";
 import { RationalBezier } from "./rational_bezier";
-import { RationalLine } from "./rational_line";
-import { circle_center } from "./rational_math";
-import { RationalPath } from "./rational_path";
-import { Point } from "./rational_point";
+import { RationalLine } from "../euclidean/rational_line";
+import { circle_center } from "../utils/rational_math";
+import { RationalPath } from "../euclidean/rational_path";
+import { Point } from "../euclidean/rational_point";
 
 const N_CHECKS = 100;
 export class RationalSegment<P extends Point> {

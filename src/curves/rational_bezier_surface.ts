@@ -1,10 +1,11 @@
 import { IModel, IModelMap, IPathMap } from "makerjs";
 import { abs, floor, min } from "mathjs";
 import { CatmullRom } from "./catmull_rom";
-import { color_dark, color_naturally, points_to_imodel } from "./makerjs_tools";
+import { PanelSplits } from "../hull_test";
+import { color_dark, color_naturally, points_to_imodel } from "../utils/makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
-import { RationalPlane } from "./rational_plane";
-import { Point2D, Point3D } from "./rational_point";
+import { RationalPlane } from "../euclidean/rational_plane";
+import { Point2D, Point3D } from "../euclidean/rational_point";
 
 export interface DivisionCurve {
     id_start: number;
@@ -82,21 +83,21 @@ export class RationalBezierSurface {
         const models: IModelMap = {};
         const paths: IPathMap = {};
         const n_step = floor(this.surface_curves.length / n);
-        this.surface_curves.forEach((c, i) => {
+        for (let i = 0; i < this.surface_curves.length - 2; i++) {
             if (i % n_step == 0) {
                 if (segments) {
                     const prefix = "sc_" + i + "_";
-                    c.c.segments
+                    this.surface_curves[i].c.segments
                         .map((s) => s.draw(dimm))
                         .map(color_naturally)
                         .forEach((d, j) => {
                             paths[prefix + j] = d;
                         });
                 } else {
-                    models["sc_" + i] = c.c.draw(dimm);
+                    models["sc_" + i] = this.surface_curves[i].c.draw(dimm);
                 }
             }
-        });
+        }
         return { models, paths };
     }
 
@@ -137,13 +138,19 @@ export class RationalBezierSurface {
     }
 
     get_point_on_surface(u: number, t: number): Point3D {
-        let u_id = floor(u * this.surface_curves.length);
+        let u_id = min(
+            floor(u * this.surface_curves.length),
+            this.surface_curves.length - 2
+        );
 
         while (this.surface_curves[u_id].u > u) {
             u_id--;
         }
 
-        while (this.surface_curves[u_id + 1].u < u) {
+        while (
+            u_id < this.surface_curves.length - 2 &&
+            this.surface_curves[u_id + 1].u < u
+        ) {
             u_id++;
         }
 
@@ -160,8 +167,7 @@ export class RationalBezierSurface {
 
     constructor(
         controls: Point3D[][],
-        variance_tolerance: number,
-        max_segments: number,
+        panels: PanelSplits[],
         intersecting_planes: RationalPlane[]
     ) {
         // First make our control Beziers
@@ -192,19 +198,20 @@ export class RationalBezierSurface {
         //  great time to gather up our divisors to remap them as division
         //  curves
         const divisors: { id: number; divs: Point2D[]; ps: Point3D[] }[] = [];
+        const panel_sets = [...panels].sort((a, b) => b.t - a.t);
         this.surface_curves = new Array(divisions - 1);
-        let segments_last = 1;
+
+        let n_segments = 1;
         for (let id = divisions - 1; id >= 0; id--) {
             const u = id / divisions;
+            if (panel_sets.length > 0 && u < panel_sets[0].t) {
+                n_segments = panel_sets[0].n;
+                panel_sets.shift();
+            }
             const curve = new RationalBezier(
                 this.control_curves.map((c) => c.get(u))
             );
-            const segments = curve.find_segments(
-                variance_tolerance,
-                segments_last,
-                max_segments
-            );
-            segments_last = segments.length;
+            const segments = curve.find_segments(10000, n_segments, n_segments);
             if (segments.length > 1) {
                 const divs = [];
                 const ps = [];
@@ -230,9 +237,10 @@ export class RationalBezierSurface {
                 const plane = intersecting_planes[line_id];
                 const intersections = curve.find_plane_intersection(plane);
                 curve_intersections.push(intersections.map((i) => i.t));
-                line.push(...intersections.map((i) => i.p));
+                intersections.forEach((i) => line.push(i.p));
             }
-            curve_intersections.forEach(l => l.sort().reverse());
+
+            curve_intersections.forEach((l) => l.sort().reverse());
 
             this.surface_curves[id] = {
                 u,

@@ -1,5 +1,5 @@
-import { Point2D } from "./rational_point";
-import { floor, pow } from "mathjs";
+import { Point2D } from "../euclidean/rational_point";
+import { floor } from "mathjs";
 import { Curve, WrappedCurve } from "./wrapped_curve";
 
 interface CatMulSegment {
@@ -157,12 +157,6 @@ export class CatmullRom extends WrappedCurve<Point2D> {
         }
         
         const t_seg = t_rel - t_idx;
-        if(t_seg <= 0) {
-            return this.segments[t_idx].p1;
-        } else if(t_seg >= 1) {
-            return this.points[t_idx + 2];
-        }
-        
         return this.get_segment(this.segments[t_idx], t_seg);
     }
 

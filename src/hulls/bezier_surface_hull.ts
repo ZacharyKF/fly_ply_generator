@@ -1,15 +1,22 @@
-import { IModel, IModelMap } from "makerjs";
-import { abs, pi } from "mathjs";
-import { DrawableHull, FlattenResult } from "./hull_test";
-import { FlattenNode } from "./flatten_node";
-import { points_to_imodel } from "./makerjs_tools";
+import MakerJs, { IModel } from "makerjs";
+import { pi } from "mathjs";
+import { DrawableHull, FlattenResult, PanelSplits } from "../hull_test";
+import { points_to_imodel } from "../utils/makerjs_tools";
 import {
     DivisionCurve,
     RationalBezierSurface,
-} from "./rational_bezier_surface";
-import { unroll_beziers, unroll_point_set } from "./rational_math";
-import { Point2D, Point3D } from "./rational_point";
-import { RationalPlane } from "./rational_plane";
+} from "../curves/rational_bezier_surface";
+import { RationalBounds } from "../euclidean/rational_bounds";
+import { unroll_beziers, unroll_point_set } from "../utils/rational_math";
+import { RationalPlane } from "../euclidean/rational_plane";
+import { Point2D, Point3D } from "../euclidean/rational_point";
+import { UpperNode } from "../flatten_node/upper_node";
+import {
+    FillResult,
+    node_as_list,
+    node_to_continuous_points,
+    split_node_recursive,
+} from "../flatten_node/draw_nodes";
 
 export class BezierSurfaceHull implements DrawableHull {
     draw_main_curves(dimm: number): MakerJs.IModel {
@@ -84,7 +91,8 @@ export class BezierSurfaceHull implements DrawableHull {
             prefix: string,
             surface: RationalBezierSurface,
             full_model: IModel,
-            panels: IModel[]
+            panels: IModel[],
+            bounds: RationalBounds<Point2D>
         ) => {
             // This is a little complicated. We want the end result to start at
             //  P.Zero, then there's a little triangle missing at the tip
@@ -93,19 +101,25 @@ export class BezierSurfaceHull implements DrawableHull {
                 Point2D.Zero,
                 false
             );
-            const ref_draw_down = t_last.axis_angle(0, b_last);
-            const ref_draw_up = b_last.axis_angle(0, t_last);
+            const draw_down_ref_dir = (3 * pi) / 2;
+            const draw_up_ref_dir = pi / 2;
 
-            const initial_node = new FlattenNode(
+            const init_fill: FillResult = {
+                draw_up_ref_dir,
+                draw_down_ref_dir,
+                ref_point_upper: t_last,
+                ref_point_lower: b_last,
+                ref_dir_lower: b_last.as_unit(),
+                ref_dir_upper: t_last.as_unit(),
+            };
+
+            const initial_node = new UpperNode(
                 surface.intersecting_lines.length,
                 prefix,
                 0,
                 0,
                 surface.surface_curves.length - 1,
-                false,
-                t_last,
-                ref_draw_up,
-                ref_draw_down,
+                init_fill,
                 (_) => 1.0,
                 (_) => 0.0
             );
@@ -114,37 +128,42 @@ export class BezierSurfaceHull implements DrawableHull {
 
             const curves = [...surface.division_curves];
 
-            // We want to process the curves in order from closes to bow back
+            // We want to process the curves in order from closest to bow back
             const bezier_sort = (a: DivisionCurve, b: DivisionCurve) => {
                 return b.end - a.end;
             };
             const sorted_curves = curves.sort(bezier_sort);
 
             // Try to fill our initial node recursively
-            initial_node.try_split_recursive(
+            split_node_recursive(
+                initial_node,
                 surface.surface_curves,
                 sorted_curves,
                 puzzle_tooth_width,
                 puzzle_tooth_angle
             );
 
+            const a = initial_node.upper_nodes[1];
+            const b = initial_node.upper_nodes[2];
+            const rot = (a.axis_angle(0, b) * -180) / pi + 180;
+
             const full_model_map = full_model.models;
             if (full_model_map != undefined) {
-                initial_node.as_list().forEach((node, idx) => {
+                node_as_list(initial_node).forEach((node, idx) => {
                     node.bulkheads.forEach((line, b_id) => {
-                        full_model_map["bulkhead_" + idx + "_" + b_id] = {
-                            layer: "blue",
-                            ...points_to_imodel(2, false, line),
-                        };
+                        let bh = points_to_imodel(2, false, line);
+                        bh = MakerJs.model.rotate(bh, rot);
+                        bh.layer = "blue";
+                        full_model_map["bulkhead_" + idx + "_" + b_id] = bh;
                     });
                     panels.push(node.draw_node());
                 });
 
-                full_model_map["outline"] = points_to_imodel(
-                    2,
-                    true,
-                    initial_node.to_continuous_points([])
-                );
+                const points = node_to_continuous_points(initial_node, []);
+                points.forEach((p) => bounds.consume(p));
+                let model = points_to_imodel(2, true, points);
+                model = MakerJs.model.rotate(model, rot);
+                full_model_map["outline"] = model;
             }
         };
 
@@ -153,6 +172,8 @@ export class BezierSurfaceHull implements DrawableHull {
             wind: { models: {} },
             lee_panels: [],
             wind_panels: [],
+            bounds_lee: new RationalBounds(Point2D.Zero),
+            bounds_wind: new RationalBounds(Point2D.Zero),
         };
 
         if (lee) {
@@ -160,7 +181,8 @@ export class BezierSurfaceHull implements DrawableHull {
                 "LEE",
                 this.surface_lee,
                 result.lee,
-                result.lee_panels
+                result.lee_panels,
+                result.bounds_lee
             );
         }
 
@@ -169,7 +191,8 @@ export class BezierSurfaceHull implements DrawableHull {
                 "WIND",
                 this.surface_wind,
                 result.wind,
-                result.wind_panels
+                result.wind_panels,
+                result.bounds_wind
             );
         }
 
@@ -185,18 +208,22 @@ export class BezierSurfaceHull implements DrawableHull {
             full_interval,
             this.surface_wind.surface_curves[0].c,
             full_interval,
-            false,
             Point2D.Zero,
             (3 * pi) / 2,
-            false
+            Point2D.X
         );
-        return {
-            ...points_to_imodel(
-                0,
-                true,
-                unroll.a_flat.concat(unroll.b_flat.reverse())
-            ),
-        };
+        const unroll_angle = unroll.b_flat[0].axis_angle(0, unroll.a_flat[0]);
+        let unroll_model = points_to_imodel(
+            0,
+            true,
+            unroll.a_flat.concat(unroll.b_flat.reverse())
+        );
+
+        unroll_model = MakerJs.model.rotate(
+            unroll_model,
+            (-180 / pi) * unroll_angle
+        );
+        return unroll_model;
     }
 
     volume_under(dist: number): number {
@@ -230,22 +257,36 @@ export class BezierSurfaceHull implements DrawableHull {
     }
 
     draw_bulkhead(idx: number): MakerJs.IModel {
+        const line_lee = this.surface_lee.intersecting_lines[idx];
+        const line_wind = this.surface_wind.intersecting_lines[idx];
+
+        if (line_lee.length == 0 || line_wind.length == 0) {
+            console.log("NO POINTS FOR BULKHEAD ", idx);
+            return {};
+        }
+
         // Bulkheads, like the transom, are unrolled
         const unroll = unroll_point_set(
-            this.surface_lee.intersecting_lines[idx],
-            this.surface_wind.intersecting_lines[idx],
+            line_lee,
+            line_wind,
             false,
             Point2D.Zero,
             (3 * pi) / 2,
-            false
+            Point2D.X
         );
-        return {
-            ...points_to_imodel(
-                0,
-                true,
-                unroll.a_flat.concat(unroll.b_flat.reverse())
-            ),
-        };
+
+        const unroll_angle = unroll.b_flat[0].axis_angle(0, unroll.a_flat[0]);
+        let unroll_model = points_to_imodel(
+            0,
+            true,
+            unroll.a_flat.concat(unroll.b_flat.reverse())
+        );
+
+        unroll_model = MakerJs.model.rotate(
+            unroll_model,
+            (-180 / pi) * unroll_angle
+        );
+        return unroll_model;
     }
 
     surface_lee: RationalBezierSurface;
@@ -253,20 +294,17 @@ export class BezierSurfaceHull implements DrawableHull {
     constructor(
         wind_curves: Point3D[][],
         lee_curves: Point3D[][],
-        variance_tolerance: number,
-        max_segments: number,
+        panels: PanelSplits[],
         intersecting_planes: RationalPlane[]
     ) {
         this.surface_lee = new RationalBezierSurface(
             lee_curves,
-            variance_tolerance,
-            max_segments,
+            panels,
             intersecting_planes
         );
         this.surface_wind = new RationalBezierSurface(
             wind_curves,
-            variance_tolerance,
-            max_segments,
+            panels,
             intersecting_planes
         );
     }
