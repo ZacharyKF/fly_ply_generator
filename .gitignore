@@ -3,3 +3,5 @@ dist
 .svg
 .*/*.svg
 *.svg
+.swc
+.ipynb_checkpoints
