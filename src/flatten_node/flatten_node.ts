@@ -1,7 +1,7 @@
 import { IModel, IModelMap, model } from "makerjs";
 import { SurfaceCurve } from "../curves/rational_bezier_surface";
 import { RationalInterval } from "../curves/rational_interval";
-import { Point2D } from "../euclidean/rational_point";
+import { Point2D, Point3D } from "../euclidean/rational_point";
 import { points_to_imodel } from "../utils/makerjs_tools";
 import { middle_value } from "../utils/rational_math";
 import { FillResult } from "./draw_nodes";
@@ -32,7 +32,7 @@ export abstract class FlattenNode {
         reference_angle: number,
         reference_direction: Point2D,
         upper_bound: (dist: number) => number,
-        lower_bound: (dist: number) => number,
+        lower_bound: (dist: number) => number
     ) {
         this.prefix = prefix;
         this.depth = depth;
@@ -93,6 +93,19 @@ export abstract class FlattenNode {
 
         return box;
     }
+
+    get_curve_data(curve: SurfaceCurve): {
+        c: SurfaceCurve;
+        b: RationalInterval;
+    } {
+        const b = this.get_bounded_interval(curve.u);
+        return {
+            c: curve,
+            b,
+        };
+    }
+
+    abstract get_bounded_interval(u: number): RationalInterval;
 
     abstract fill(
         surface_curves: SurfaceCurve[],

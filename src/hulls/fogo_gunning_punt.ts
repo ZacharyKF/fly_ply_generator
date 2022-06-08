@@ -136,10 +136,11 @@ const bulk_heads: RationalPlane[] = [
 ];
 let waterlines: number[] = [10, 15];
 let panels: PanelSplits[] = [
-    { t: 6/7, n: 2 },
-    { t: 5/7, n: 3 },
+    { t: 4/5, n: 2 },
+    { t: 4/6, n: 3 },
     { t: 4/7, n: 4 },
-    { t: 3/7, n: 5 },
+    { t: 4/8, n: 5 },
+    { t: 4/9, n: 6 },
 ];
 
 export function get_fogo_island_gunning_punt(): HullShape {

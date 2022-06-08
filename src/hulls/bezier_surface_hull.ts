@@ -85,7 +85,8 @@ export class BezierSurfaceHull implements DrawableHull {
         lee: boolean,
         wind: boolean,
         puzzle_tooth_width: number,
-        puzzle_tooth_angle: number
+        puzzle_tooth_angle: number,
+        straight_lowers: boolean,
     ): FlattenResult {
         const populate_nodes = (
             prefix: string,
@@ -140,7 +141,8 @@ export class BezierSurfaceHull implements DrawableHull {
                 surface.surface_curves,
                 sorted_curves,
                 puzzle_tooth_width,
-                puzzle_tooth_angle
+                puzzle_tooth_angle,
+                straight_lowers,
             );
 
             const a = initial_node.upper_nodes[1];
@@ -210,7 +212,8 @@ export class BezierSurfaceHull implements DrawableHull {
             full_interval,
             Point2D.Zero,
             (3 * pi) / 2,
-            Point2D.X
+            Point2D.X,
+            false,
         );
         const unroll_angle = unroll.b_flat[0].axis_angle(0, unroll.a_flat[0]);
         let unroll_model = points_to_imodel(
@@ -272,7 +275,8 @@ export class BezierSurfaceHull implements DrawableHull {
             false,
             Point2D.Zero,
             (3 * pi) / 2,
-            Point2D.X
+            Point2D.X,
+            false,
         );
 
         const unroll_angle = unroll.b_flat[0].axis_angle(0, unroll.a_flat[0]);

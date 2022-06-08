@@ -1,7 +1,6 @@
 import { abs, ceil, floor, max, min, sign } from "mathjs";
 import { RationalPlane } from "../euclidean/rational_plane";
 import { Point } from "../euclidean/rational_point";
-import { interpolate_steps } from "../utils/rational_math";
 
 export interface RationalLut<P extends Point> {
     p: P;
@@ -15,7 +14,7 @@ export interface RationalLut<P extends Point> {
     aa: number;
 }
 
-export const MAX_RESOLUTION = 250;
+export const MAX_RESOLUTION = 750;
 export const MIN_STEP = 1 / MAX_RESOLUTION;
 export const MIN_STEP_FACTOR = 4 / 5;
 

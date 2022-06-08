@@ -11,7 +11,8 @@ export function split_node_recursive(
     surface_curves: SurfaceCurve[],
     curves: DivisionCurve[],
     puzzle_tooth_width: number,
-    puzzle_tooth_angle: number
+    puzzle_tooth_angle: number,
+    straight_lowers: boolean,
 ) {
     // If we've reached the end, then fill ourselves and return
     if (curves.length == 0) {
@@ -29,7 +30,8 @@ export function split_node_recursive(
             surface_curves,
             hull_curve,
             puzzle_tooth_width,
-            puzzle_tooth_angle
+            puzzle_tooth_angle,
+            straight_lowers,
         ).consumed;
     }
 
@@ -47,7 +49,8 @@ export function split_node_recursive(
             surface_curves,
             curves_copy,
             puzzle_tooth_width,
-            puzzle_tooth_angle
+            puzzle_tooth_angle,
+            straight_lowers
         )
     );
 }
@@ -59,7 +62,8 @@ export function try_split(
     surface_curves: SurfaceCurve[],
     curve: DivisionCurve,
     puzzle_tooth_width: number,
-    puzzle_tooth_angle: number
+    puzzle_tooth_angle: number,
+    straight_lowers: boolean,
 ): {
     consumed: boolean;
     nodes: FlattenNode[];
@@ -111,6 +115,7 @@ export function try_split(
         node.children.length,
         curve.id_end,
         new_dirs,
+        straight_lowers,
         curve_bound,
         node.lower_bound
     );

@@ -26,6 +26,7 @@ let draw_bulkheads = true;
 let lee_draw = true;
 let wind_draw = true;
 let as_divisions = true;
+let straight_lowers = false;
 
 // Hull division parameters
 let puzzle_tooth_width = 2.5 / 30;
@@ -163,7 +164,8 @@ if (draw_flattened) {
         lee_draw,
         wind_draw,
         puzzle_tooth_width,
-        puzzle_tooth_angle
+        puzzle_tooth_angle,
+        straight_lowers,
     );
 
     y += hull_depth - grid_y;
@@ -250,7 +252,8 @@ export interface DrawableHull {
         lee: boolean,
         wind: boolean,
         puzzle_tooth_width: number,
-        puzzle_tooth_angle: number
+        puzzle_tooth_angle: number,
+        straight_lowers: boolean,
     ): FlattenResult;
     draw_hull_curves(
         draw_hull_curve_bezier: boolean,

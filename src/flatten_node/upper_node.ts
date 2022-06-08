@@ -1,9 +1,12 @@
 import { max, min } from "mathjs";
 import { SurfaceCurve } from "../curves/rational_bezier_surface";
 import { RationalInterval } from "../curves/rational_interval";
-import { Point2D } from "../euclidean/rational_point";
+import { Point2D, Point3D } from "../euclidean/rational_point";
 import { point_path_to_puzzle_teeth } from "../utils/makerjs_tools";
-import { interpolate_line, unroll_beziers } from "../utils/rational_math";
+import {
+    interpolate_line,
+    unroll_beziers,
+} from "../utils/rational_math";
 import { FillResult } from "./draw_nodes";
 import { FlattenNode } from "./flatten_node";
 
@@ -32,7 +35,6 @@ export class UpperNode extends FlattenNode {
         );
     }
 
-    
     get_bounded_interval(u: number): RationalInterval {
         const end = this.lower_bound(u);
         const start = this.upper_bound(u);
@@ -82,22 +84,18 @@ export class UpperNode extends FlattenNode {
         puzzle_tooth_width: number,
         puzzle_tooth_angle: number
     ): FillResult {
-        
-        let bounds_b = this.get_bounded_interval(
-            surface_curves[this.start_seg_idx].u
-        );
-        let bounds_a = this.get_bounded_interval(
-            surface_curves[this.start_seg_idx - 1].u
-        );
+        let b = this.get_curve_data(surface_curves[this.start_seg_idx]);
+        let a = this.get_curve_data(surface_curves[this.start_seg_idx - 1]);
 
         let flattened = unroll_beziers(
-            surface_curves[this.start_seg_idx - 1].c,
-            bounds_a,
-            surface_curves[this.start_seg_idx].c,
-            bounds_b,
+            a.c.c,
+            a.b,
+            b.c.c,
+            b.b,
             this.reference_point,
             this.reference_angle,
-            this.reference_direction
+            this.reference_direction,
+            false
         );
 
         if (this.depth > 0) {
@@ -108,49 +106,39 @@ export class UpperNode extends FlattenNode {
             );
         }
 
-        this.append_segment(
-            flattened.b_flat,
-            surface_curves[this.start_seg_idx],
-            bounds_b
-        );
-        this.append_segment(
-            flattened.a_flat,
-            surface_curves[this.start_seg_idx - 1],
-            bounds_a
-        );
+        this.append_segment(flattened.b_flat, b.c, b.b);
+        this.append_segment(flattened.a_flat, a.c, a.b);
 
-        bounds_b = bounds_a;
+        b = a;
 
         for (let i = this.start_seg_idx - 2; i >= idx_end; i--) {
-            bounds_a = this.get_bounded_interval(surface_curves[i].u);
+            a = this.get_curve_data(surface_curves[i]);
 
             flattened = unroll_beziers(
-                surface_curves[i].c,
-                bounds_a,
-                surface_curves[i + 1].c,
-                bounds_b,
+                a.c.c,
+                a.b,
+                b.c.c,
+                b.b,
                 flattened.a_flat[0],
                 flattened.f1f4_dir,
                 this.reference_direction,
+                false,
             );
 
-            this.append_segment(
-                flattened.a_flat,
-                surface_curves[i],
-                bounds_a
-            );
+            this.append_segment(flattened.a_flat, a.c, a.b);
 
-            bounds_b = bounds_a;
+            b = a;
         }
 
-        
         return {
             draw_up_ref_dir: flattened.fnfn_less1_dir,
             draw_down_ref_dir: flattened.f1f4_dir,
             ref_point_upper: flattened.a_flat[0],
             ref_point_lower: flattened.a_flat[flattened.a_flat.length - 1],
             ref_dir_upper: flattened.a_flat[0].sub(flattened.b_flat[0]),
-            ref_dir_lower: flattened.a_flat[flattened.a_flat.length - 1].sub(flattened.b_flat[flattened.b_flat.length - 1]),
+            ref_dir_lower: flattened.a_flat[flattened.a_flat.length - 1].sub(
+                flattened.b_flat[flattened.b_flat.length - 1]
+            ),
         };
     }
 }
