@@ -37,7 +37,7 @@ let segments_drawn = min(slices - 1, 75);
 let export_svg = (name: string, model: IModel) => {
     let to_export = MakerJs.model.scale(MakerJs.model.clone(model), scale_up);
     var svg = exporter.toSVG(to_export);
-    fs.writeFile(name + ".svg", svg, (_) => {});
+    fs.writeFile("../svg/" + name + ".svg", svg, (_) => {});
 };
 
 const bounds = new RationalBounds(Point3D.Zero);

@@ -10,12 +10,10 @@ import { Point2D, Point3D } from "./euclidean/rational_point";
 import { relay_line } from "./utils/rational_math";
 import { points_to_imodel } from "./utils/makerjs_tools";
 
-
-
 let export_svg = (name: string, model: IModel) => {
-    let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 50);
+    let to_export = MakerJs.model.scale(MakerJs.model.clone(model), 20);
     var svg = exporter.toSVG(to_export);
-    fs.writeFile(name + ".svg", svg, (_) => {});
+    fs.writeFile("../svg/" + name + ".svg", svg, (_) => {});
 };
 
 
