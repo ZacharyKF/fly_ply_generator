@@ -100,12 +100,6 @@ const gunnels = [g0, g1, g2, g3];
 
 const lee = [bilge, sides_b, sides_a, gunnels];
 
-console.log("\n==== CURVES ====");
-lee.forEach((l, i) => {
-    console.log("== Curve " + i + " ==");
-    l.forEach((p) => console.log("=> ", p.x, p.y, p.z, p.w));
-});
-
 // Find our mininum value point
 const bounds = new RationalBounds(g0);
 lee.forEach((l) => l.forEach((p) => bounds.consume(p)));

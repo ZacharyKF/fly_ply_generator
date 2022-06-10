@@ -1,80 +1,43 @@
-import { IModel, IPath, IPathArc, IPoint, models, paths } from "makerjs";
-import { abs, floor, pi, pow, sqrt } from "mathjs";
-import { Point, Point2D, Point3D } from "../euclidean/rational_point";
-
-export function colinear_filter<T>(
-    datum: T[],
-    get_point: (data: T) => Point,
-    minimum: number,
-    tolerance: number
-): T[] {
-    if (datum.length <= minimum) {
-        return datum;
-    }
-
-    let points: Point[] = datum.map(get_point);
-
-    let to_remove: number[] = [];
-    do {
-        if (points.length - to_remove.length <= minimum) {
-            break;
-        }
-
-        to_remove.reverse().forEach((idx) => {
-            points.splice(idx, 1);
-            datum.splice(idx, 1);
-        });
-        to_remove = [];
-
-        for (let i = 1; i < points.length - 1; i++) {
-            let vec_a = points[i + 1].sub(points[i]);
-            let vec_b = points[i - 1].sub(points[i]);
-            let dot = abs(vec_a.dot(vec_b));
-            if (dot < tolerance) {
-                to_remove.push(i);
-
-                // skip one to avoid redundant deletion
-                i++;
-            }
-        }
-    } while (to_remove.length > 0);
-
-    return datum;
-}
+import { IModel, IPath, models } from "makerjs";
+import { abs, floor, pi } from "mathjs";
+import { Point, Point2D } from "../euclidean/rational_point";
 
 export function colinear_filter_points(
     datum: Point[],
-    minimum: number,
     tolerance: number
 ): Point[] {
-    if (datum.length <= minimum) {
+    if (datum.length <= 2) {
         return datum;
     }
-
-    let to_remove: number[] = [];
+    let changed = false;
     do {
-        if (datum.length - to_remove.length <= minimum) {
-            break;
-        }
-
-        to_remove.reverse().forEach((idx) => {
-            datum.splice(idx, 1);
-        });
-        to_remove = [];
+        changed = false;
+        let idx_place = 1;
+        let match = 0;
 
         for (let i = 1; i < datum.length - 1; i++) {
-            let vec_a = datum[i + 1].sub(datum[i]);
-            let vec_b = datum[i].sub(datum[i - 1]);
-            let dot = vec_a.dot(vec_b);
-            if (dot > tolerance) {
-                to_remove.push(i);
+            if (match > 0) {
+                datum[idx_place] = datum[i];
+                idx_place++;
+                match--;
+                continue;
+            }
+            const vec_a = datum[i + 1].sub(datum[i]);
+            const vec_b = datum[i].sub(datum[i - 1]);
+            const dot = vec_a.dot(vec_b);
 
-                // skip two to avoid redundant deletion
-                i = i + 2;
+            if (abs(dot) >= tolerance) {
+                changed = true;
+            } else {
+                datum[idx_place] = datum[i];
+                idx_place++;
+                match = 2;
             }
         }
-    } while (to_remove.length > 0);
 
+        datum[idx_place] = datum[datum.length - 1];
+        datum.length = idx_place + 1;
+    } while (changed);
     return datum;
 }
 
@@ -83,7 +46,10 @@ export function points_to_imodel(
     loop: boolean,
     points: Point[]
 ): IModel {
-    return new models.ConnectTheDots(loop, points.map(p => p.to_ipoint(dimension)));
+    return new models.ConnectTheDots(
+        loop,
+        colinear_filter_points(points, 0.99999999).map((p) => p.to_ipoint(dimension))
+    );
 }
 
 export const colours: string[] = [
@@ -128,16 +94,14 @@ export function color_dark<T extends IModel | IPath>(val: T, index: number): T {
 }
 
 export class DistanceEnhancedPath {
-    path: Point2D[];
     distances: number[];
 
-    constructor(path: Point2D[]) {
-        this.path = path;
-        this.distances = [0];
+    constructor(readonly path: Point2D[]) {
+        this.distances = new Array(path.length);
+        this.distances[0] = 0;
         for (let i = 1; i < path.length; i++) {
-            this.distances.push(
-                this.distances[i - 1] + path[i].dist(path[i - 1])
-            );
+            this.distances[i] =
+                this.distances[i - 1] + path[i].dist(path[i - 1]);
         }
     }
 
@@ -249,13 +213,13 @@ export function point_path_to_puzzle_teeth(
         let a = prev_point.flat_rotation(
             2,
             puzzle_tooth_width / 2,
-            angle + (outside ? puzzle_tooth_angle : -puzzle_tooth_angle),
+            angle + (outside ? puzzle_tooth_angle : -puzzle_tooth_angle)
         );
 
         let b = curr_point.flat_rotation(
             2,
             puzzle_tooth_width / 2,
-            angle + (outside ? -puzzle_tooth_angle : puzzle_tooth_angle),
+            angle + (outside ? -puzzle_tooth_angle : puzzle_tooth_angle)
         );
 
         result.push(prev_point);
@@ -272,4 +236,26 @@ export function point_path_to_puzzle_teeth(
     );
 
     return result;
+}
+
+export function make_arrow<P extends Point>(
+    dimm: number,
+    s: P,
+    e: P,
+    a: number,
+    l: number
+): IModel {
+    const end = s.to_ipoint(dimm);
+    const origin = e.to_ipoint(dimm);
+    const a_se = e.axis_angle(dimm, s);
+    const ha = e.flat_rotation(0, l, a_se + a);
+    const hb = e.flat_rotation(0, l, a_se - a);
+
+    return {
+        paths: {
+            a: { type: "line", origin, end },
+            b: { type: "line", origin, end: ha.to_ipoint(dimm) },
+            c: { type: "line", origin, end: hb.to_ipoint(dimm) },
+        },
+    };
 }

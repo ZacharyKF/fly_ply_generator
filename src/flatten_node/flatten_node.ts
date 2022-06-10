@@ -7,50 +7,27 @@ import { middle_value } from "../utils/rational_math";
 import { FillResult } from "./draw_nodes";
 
 export abstract class FlattenNode {
-    prefix: string;
-    depth: number;
-    idx: number;
-    start_seg_idx: number;
-    reference_point: Point2D;
-    reference_angle: number;
-    reference_direction: Point2D;
-    upper_bound: (dist: number) => number;
-    lower_bound: (dist: number) => number;
-    children: FlattenNode[];
-    start: Point2D[];
-    upper_nodes: Point2D[];
-    lower_nodes: Point2D[];
-    bulkheads: Point2D[][];
+    children: FlattenNode[] = [];
+    start: Point2D[] = [];
+    upper_nodes: Point2D[] = [];
+    lower_nodes: Point2D[] = [];
+    bulkheads: Point2D[][] = [];
 
     constructor(
-        n_bulkheads: number,
-        prefix: string,
-        depth: number,
-        idx: number,
-        start_seg_idx: number,
-        reference_point: Point2D,
-        reference_angle: number,
-        reference_direction: Point2D,
-        upper_bound: (dist: number) => number,
-        lower_bound: (dist: number) => number
+        readonly n_bulkheads: number,
+        readonly prefix: string,
+        readonly depth: number,
+        readonly idx: number,
+        readonly start_seg_idx: number,
+        readonly reference_point: Point2D,
+        readonly reference_angle: number,
+        readonly reference_direction: Point2D,
+        readonly upper_bound: (dist: number) => number,
+        readonly lower_bound: (dist: number) => number
     ) {
-        this.prefix = prefix;
-        this.depth = depth;
-        this.idx = idx;
-        this.start_seg_idx = start_seg_idx;
-        this.reference_point = reference_point;
-        this.reference_angle = reference_angle;
-        this.reference_direction = reference_direction;
-        this.upper_bound = upper_bound;
-        this.lower_bound = lower_bound;
-        this.children = [];
-        this.upper_nodes = [];
-        this.lower_nodes = [];
-        this.bulkheads = [];
         for (let i = 0; i < n_bulkheads; i++) {
             this.bulkheads.push([]);
         }
-        this.start = [];
     }
 
     draw_node(): IModel {

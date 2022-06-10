@@ -5,23 +5,19 @@ import { Point } from "./rational_point";
 
 const tau = 2 * pi;
 export class RationalArc<P extends Point> implements RationalPath<P> {
-    readonly a: P;
-    readonly b: P;
-    readonly c: P;
-    readonly center: P;
-    readonly radius: number;
     readonly vec_a: P;
     readonly vec_b: P;
     readonly vec_c: P;
     readonly angle: number;
     readonly length: number;
 
-    constructor(center: P, a: P, b: P, c: P, radius: number) {
-        this.a = a;
-        this.b = b;
-        this.c = c;
-        this.center = center;
-        this.radius = radius;
+    constructor(
+        readonly center: P,
+        readonly a: P,
+        readonly b: P,
+        readonly c: P,
+        readonly radius: number
+    ) {
         this.vec_a = <P>a.sub(center);
         this.vec_b = <P>b.sub(center);
         this.vec_c = <P>c.sub(center);
@@ -38,7 +34,7 @@ export class RationalArc<P extends Point> implements RationalPath<P> {
         if (abs(vec_flat_ba.dot(vec_flat_bc)) > 0.9999999) {
             return new paths.Line(
                 this.a.to_ipoint(dimension),
-                this.c.to_ipoint(dimension),
+                this.c.to_ipoint(dimension)
             );
         } else {
             return new paths.Arc(

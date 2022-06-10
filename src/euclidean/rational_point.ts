@@ -17,7 +17,7 @@ export interface Point {
     max(other: Point): Point;
     min(other: Point): Point;
     in_box(min: Point, max: Point): boolean;
-    corners(other: Point) : Point[];
+    corners(other: Point): Point[];
     div(n: number): Point;
     diff_dimm(other: Point, dimm: number): number;
     set_dimm(n: number, dimm: number): Point;
@@ -41,17 +41,12 @@ export class Point3D implements Point {
     static Y = new Point3D(0, 1, 0, 1);
     static Z = new Point3D(0, 0, 1, 1);
 
-    x: number;
-    y: number;
-    z: number;
-    w: number;
-
-    constructor(x: number, y: number, z: number, w: number) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.w = w;
-    }
+    constructor(
+        public x: number,
+        public y: number,
+        public z: number,
+        public w: number
+    ) {}
 
     magnitude(): number {
         return sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
@@ -115,7 +110,10 @@ export class Point3D implements Point {
     }
 
     cross_mag(other: Point3D): number {
-        return this.cross(other).magnitude();
+        const x = this.y * other.z - this.z * other.y;
+        const y = this.z * other.x - this.x * other.z;
+        const z = this.x * other.y - this.y * other.x;
+        return sqrt(x * x + y * y + z * z);
     }
 
     add(other: Point3D): Point3D {
@@ -137,7 +135,10 @@ export class Point3D implements Point {
     }
 
     dist(other: Point3D): number {
-        return this.sub(other).magnitude();
+        const x = this.x - other.x;
+        const y = this.y - other.y;
+        const z = this.z - other.z;
+        return sqrt(x * x + y * y + z * z);
     }
 
     mul(n: number): Point3D {
@@ -255,7 +256,6 @@ export class Point3D implements Point {
     axis_angle(dimm: number, other: Point3D): number {
         let axis = this.get_axis(dimm);
         let this_other = other.sub(this);
-        let cross = this_other.cross(axis);
         let angle = this_other.angle(axis);
 
         return angle;
@@ -316,15 +316,7 @@ export class Point2D implements Point {
     static X = new Point2D(1, 0, 1);
     static Y = new Point2D(0, 1, 1);
 
-    x: number;
-    y: number;
-    w: number;
-
-    constructor(x: number, y: number, w: number) {
-        this.x = x;
-        this.y = y;
-        this.w = w;
-    }
+    constructor(public x: number, public y: number, public w: number) {}
 
     magnitude(): number {
         return sqrt(this.x * this.x + this.y * this.y);
@@ -357,10 +349,7 @@ export class Point2D implements Point {
 
     in_box(min: Point3D, max: Point3D): boolean {
         return (
-            this.x > min.x &&
-            this.x < max.x &&
-            this.y > min.y &&
-            this.y < max.y
+            this.x > min.x && this.x < max.x && this.y > min.y && this.y < max.y
         );
     }
 
@@ -372,7 +361,6 @@ export class Point2D implements Point {
             new Point2D(other.x, other.y, 1),
         ];
     }
-
 
     zero(): Point {
         return Point2D.Zero;
@@ -399,7 +387,9 @@ export class Point2D implements Point {
     }
 
     dist(other: Point2D): number {
-        return this.sub(other).magnitude();
+        const x = this.x - other.x;
+        const y = this.y - other.y;
+        return sqrt(x * x + y * y);
     }
 
     mul(n: number): Point2D {

@@ -8,24 +8,21 @@ import { Point } from "../euclidean/rational_point";
 
 const N_CHECKS = 100;
 export class RationalSegment<P extends Point> {
-    readonly start_p: P;
-    readonly start_t: number;
-    readonly end_p: P;
-    readonly end_t: number;
     readonly segment: RationalPath<P>;
     readonly error: number;
 
-    constructor(parent: RationalBezier<P>, start_p: P, start_t: number, end_p: P, end_t: number) {
-        this.start_p = start_p;
-        this.start_t = start_t;
-        this.end_p = end_p;
-        this.end_t = end_t;
-
+    constructor(
+        parent: RationalBezier<P>,
+        readonly start_p: P,
+        readonly start_t: number,
+        readonly end_p: P,
+        readonly end_t: number
+    ) {
         // Do a quarternary search for the best fit of a path to our segment
 
         let high = end_t;
         let low = start_t;
-        let mid_2 = (high + low)/2;
+        let mid_2 = (high + low) / 2;
         let step = 0;
         let mid_1 = 0;
         let mid_3 = 0;
@@ -94,11 +91,14 @@ export class RationalSegment<P extends Point> {
         }
     }
 
-    private calc_error(parent: RationalBezier<P>, path: RationalPath<P>): number {
+    private calc_error(
+        parent: RationalBezier<P>,
+        path: RationalPath<P>
+    ): number {
         let total_error = 0;
         let p_last = this.start_p;
-        for(let i = 1; i < N_CHECKS; i++) {
-            const idx = i/N_CHECKS;
+        for (let i = 1; i < N_CHECKS; i++) {
+            const idx = i / N_CHECKS;
             const t = this.start_t * idx + this.end_t * (1 - idx);
             const p = parent.get(t);
             const seg_dist = path.dist_to_point(p);

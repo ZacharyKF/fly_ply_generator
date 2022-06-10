@@ -1,5 +1,6 @@
 import { DivisionCurve, SurfaceCurve } from "../curves/rational_bezier_surface";
 import { Point2D } from "../euclidean/rational_point";
+import { colinear_filter_points } from "../utils/makerjs_tools";
 import { FlattenNode } from "./flatten_node";
 import { LowerNode } from "./lower_node";
 import { UpperNode } from "./upper_node";
@@ -12,7 +13,7 @@ export function split_node_recursive(
     curves: DivisionCurve[],
     puzzle_tooth_width: number,
     puzzle_tooth_angle: number,
-    straight_lowers: boolean,
+    straight_lowers: boolean
 ) {
     // If we've reached the end, then fill ourselves and return
     if (curves.length == 0) {
@@ -31,7 +32,7 @@ export function split_node_recursive(
             hull_curve,
             puzzle_tooth_width,
             puzzle_tooth_angle,
-            straight_lowers,
+            straight_lowers
         ).consumed;
     }
 
@@ -63,7 +64,7 @@ export function try_split(
     curve: DivisionCurve,
     puzzle_tooth_width: number,
     puzzle_tooth_angle: number,
-    straight_lowers: boolean,
+    straight_lowers: boolean
 ): {
     consumed: boolean;
     nodes: FlattenNode[];
@@ -93,7 +94,7 @@ export function try_split(
     //  define the boundary between them
     const max_u = surface_curves[curve.id_end].u;
     const curve_bound = (u: number) => {
-        return curve.t_curve.get(u/max_u).y;
+        return curve.t_curve.get(u / max_u).y;
     };
 
     const child_draw_down = new UpperNode(
@@ -115,9 +116,9 @@ export function try_split(
         node.children.length,
         curve.id_end,
         new_dirs,
-        straight_lowers,
         curve_bound,
-        node.lower_bound
+        node.lower_bound,
+        straight_lowers
     );
     node.children.push(child_draw_up);
 
@@ -145,7 +146,9 @@ export function node_to_continuous_points(
         node_to_continuous_points(child, points);
     });
 
-    points.push(...node.lower_nodes.reverse());
+    points.push(
+        ...[...node.lower_nodes].reverse()
+    );
 
     return points;
 }

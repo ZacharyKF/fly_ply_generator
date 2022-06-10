@@ -6,13 +6,10 @@ import { NormalizedCurve } from "./normalized_curve";
 import { RationalSegment } from "./rational_segment";
 
 export class RationalBezier<P extends Point> extends NormalizedCurve<P> {
-    controls: P[];
-    segments: RationalSegment<P>[];
+    segments: RationalSegment<P>[] = [];
 
-    constructor(controls: P[]) {
+    constructor(readonly controls: P[]) {
         super(<P>controls[0].zero());
-        this.controls = controls;
-        this.segments = [];
         this.populate_lut();
     }
 
@@ -41,9 +38,10 @@ export class RationalBezier<P extends Point> extends NormalizedCurve<P> {
 
     // Just use every 10th point from the LUT
     draw(dimension: number): IModel {
-        let points = this.as_list().map((p) => p.to_ipoint(dimension));
-        points.push(this.lut[this.lut.length - 1].p.to_ipoint(dimension));
-        return new models.ConnectTheDots(false, points);
+        return new models.ConnectTheDots(
+            false,
+            this.as_list().map((p) => p.to_ipoint(dimension))
+        );
     }
 
     find_segments(
@@ -112,7 +110,7 @@ export class RationalBezier<P extends Point> extends NormalizedCurve<P> {
             divisors[divisors.length - 1] = this.lut.length - 1;
 
             total_error = 0;
-            segments = [];
+            segments = new Array(divisors.length - 1);
             for (let i = 0; i < divisors.length - 1; i++) {
                 const l_start = this.lut[divisors[i]];
                 const l_end = this.lut[divisors[i + 1]];
@@ -124,7 +122,7 @@ export class RationalBezier<P extends Point> extends NormalizedCurve<P> {
                     l_end.d / this.length
                 );
                 total_error += new_seg.error;
-                segments.push(new_seg);
+                segments[i] = new_seg;
             }
             // Iterate our number of segments so that if we need to go again we
             //  add more segments to decrease the variance

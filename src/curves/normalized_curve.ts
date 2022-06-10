@@ -14,7 +14,7 @@ export interface RationalLut<P extends Point> {
     aa: number;
 }
 
-export const MAX_RESOLUTION = 750;
+export const MAX_RESOLUTION = 150;
 export const MIN_STEP = 1 / MAX_RESOLUTION;
 export const MIN_STEP_FACTOR = 4 / 5;
 
@@ -118,14 +118,16 @@ export abstract class NormalizedCurve<P extends Point> {
                 a: 0,
                 aa: 0,
             };
-            this.lut = [lut_last];
+
+            this.lut = new Array(arc_lengths.length);
+            this.lut[0] = lut_last;
 
             for (let i = 1; i < arc_lengths.length; i++) {
                 const p_new = this.get_internal(arc_lengths[i].t);
                 this.bounds_max = <P>this.bounds_max.max(p_new);
                 this.bounds_min = <P>this.bounds_min.min(p_new);
 
-                let new_lut = <RationalLut<P>>{
+                const new_lut = <RationalLut<P>>{
                     p: p_new,
                     pv: <P>p_new.sub(lut_last.p).as_unit(),
                     b_min: <P>lut_last.p.min(p_new),
@@ -136,30 +138,44 @@ export abstract class NormalizedCurve<P extends Point> {
                     a: 0,
                     aa: 0,
                 };
-                this.lut.push(new_lut);
+                this.lut[i] = new_lut;
+
+                if (i > 1) {
+                    let a = this.lut[i - 2];
+                    let b = this.lut[i - 1];
+                    let c = this.lut[i];
+
+                    let vec_ba = a.p.sub(b.p);
+                    let vec_bc = c.p.sub(b.p);
+
+                    let angle = vec_ba.angle(vec_bc);
+
+                    b.angle = angle;
+                    b.a = angle + a.a;
+                    b.aa = angle * angle + a.aa;
+                }
+
                 lut_last = new_lut;
             }
         }
 
-        // Now we can augment our lut with angle informatio
-        for (let i = 1; i < MAX_RESOLUTION; i++) {
-            let a = this.lut[i - 1];
-            let b = this.lut[i];
-            let c = this.lut[i + 1];
-
-            let vec_ba = a.p.sub(b.p);
-            let vec_bc = c.p.sub(b.p);
-
-            let angle = vec_ba.angle(vec_bc);
-
-            // Integral angles
-            b.angle = angle;
-            b.a = angle + a.a;
-            b.aa = angle * angle + a.aa;
-        }
-
         this.length = this.lut[MAX_RESOLUTION].d;
         this.corners = <P[]>this.bounds_min.corners(this.bounds_max);
+    }
+
+    get_lut(u: number): number {
+        const d_check = u * this.length;
+        let lut_id = floor(u * this.lut.length);
+
+        while (this.lut[lut_id].d > d_check) {
+            lut_id = lut_id - 1;
+        }
+
+        while (this.lut[lut_id + 1].d < d_check) {
+            lut_id = lut_id + 1;
+        }
+
+        return lut_id;
     }
 
     get(u: number): P {
@@ -394,12 +410,14 @@ export abstract class NormalizedCurve<P extends Point> {
         width_dimm: number
     ): number {
         let area = 0;
-        let t_step = (t_up - t_low) / 1000;
-        let prev_point = this.get(t_low);
-        for (let i = t_low + t_step; i < t_up; i += t_step) {
-            let new_point = this.get(i);
-            area += new_point.area(prev_point, height_dimm, width_dimm);
-            prev_point = new_point;
+        const lid_min = this.get_lut(t_low);
+        const lid_max = this.get_lut(t_up);
+        for (let i = lid_min + 1; i <= lid_max; i++) {
+            area += this.lut[i].p.area(
+                this.lut[i - 1].p,
+                height_dimm,
+                width_dimm
+            );
         }
         return area;
     }
@@ -415,13 +433,13 @@ export abstract class NormalizedCurve<P extends Point> {
     }
 
     get_n_in_range(n: number, t_min: number, t_max: number) {
-        const results: P[] = [];
+        const results: P[] = new Array(n);
 
         for (let i = 0; i <= n; i++) {
             const t = i / n;
             const s = 1 - t;
             const u = t_min * s + t_max * t;
-            results.push(this.get(u));
+            results[i] = this.get(u);
         }
 
         return results;

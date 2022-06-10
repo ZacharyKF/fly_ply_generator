@@ -11,20 +11,14 @@ interface CatMulSegment {
 
 export class CatmullRom extends NormalizedCurve<Point2D> {
     public segments: CatMulSegment[];
-    controls: Point2D[];
-    alpha: number;
-    tension: number;
 
     constructor(
-        controls: Point2D[],
-        alpha: number,
-        tension: number,
+        private controls: Point2D[],
+        private alpha: number,
+        private tension: number,
         flip_ends: boolean
     ) {
         super(<Point2D>controls[1].zero());
-        this.controls = controls;
-        this.alpha = alpha;
-        this.tension = tension;
         if (flip_ends) {
             controls.unshift(controls[0].add(controls[1].sub(controls[0])));
 
@@ -38,7 +32,7 @@ export class CatmullRom extends NormalizedCurve<Point2D> {
         }
 
         const s = 1 - tension;
-        const segments: CatMulSegment[] = [];
+        const segments: CatMulSegment[] = new Array(controls.length - 3);
         for (let i = 1; i < controls.length - 2; i++) {
             const p0 = controls[i - 1];
             const p1 = controls[i];
@@ -59,7 +53,7 @@ export class CatmullRom extends NormalizedCurve<Point2D> {
                         .mul(t12)
                 )
                 .mul(s);
-                
+
             const m2 = p2
                 .sub(p1)
                 .add(
@@ -71,12 +65,12 @@ export class CatmullRom extends NormalizedCurve<Point2D> {
                 )
                 .mul(s);
 
-            segments.push({
+            segments[i - 1] = {
                 a: p1.sub(p2).mul(2).add(m1).add(m2),
                 b: p1.sub(p2).mul(-3).sub(m1).sub(m1).sub(m2),
                 m1,
                 p1,
-            });
+            };
         }
 
         this.segments = segments;

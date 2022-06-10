@@ -1,8 +1,8 @@
 import { IModel, IModelMap, IPathMap } from "makerjs";
-import { abs, floor, min } from "mathjs";
+import { floor, min } from "mathjs";
 import { CatmullRom } from "./catmull_rom";
 import { PanelSplits } from "../hull_test";
-import { color_dark, color_naturally, points_to_imodel } from "../utils/makerjs_tools";
+import { colinear_filter_points, color_dark, color_naturally, points_to_imodel } from "../utils/makerjs_tools";
 import { RationalBezier } from "./rational_bezier";
 import { RationalPlane } from "../euclidean/rational_plane";
 import { Point2D, Point3D } from "../euclidean/rational_point";
@@ -316,7 +316,7 @@ export class RationalBezierSurface {
                 t_curve: new CatmullRom(
                     c.map((i) => i.t),
                     0.95,
-                    0.01,
+                    0.05,
                     true
                 ),
                 p_line: c.map((i) => i.p),

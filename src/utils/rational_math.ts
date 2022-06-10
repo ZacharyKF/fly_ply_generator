@@ -189,11 +189,11 @@ export function relay_line<P extends Point>(line: P[], n: number): P[] {
 }
 
 export function interpolate_steps<P extends Point>(line: P[], n: number): P[] {
-    const results: P[] = [];
+    const results: P[] = new Array(n);
     const u = n - 1;
     for (let i = 0; i <= u; i++) {
         const t = i / u;
-        results.push(interpolate_line(line, t));
+        results[i] = interpolate_line(line, t);
     }
     return results;
 }

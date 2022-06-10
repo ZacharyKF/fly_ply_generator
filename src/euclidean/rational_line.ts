@@ -3,16 +3,14 @@ import { RationalPath } from "./rational_path";
 import { Point } from "./rational_point";
 
 export class RationalLine<P extends Point> implements RationalPath<P> {
-    readonly a: P;
-    readonly b: P;
     readonly vec_ab: P;
     readonly length: number;
 
-    constructor(a: P, b: P) {
+    constructor(readonly a: P, readonly b: P) {
         this.a = a;
         this.b = b;
         this.vec_ab = <P>b.sub(a);
-        this.length = this.vec_ab.magnitude;
+        this.length = this.vec_ab.magnitude();
     }
 
     as_path(dimension: number): IPath {
@@ -33,7 +31,7 @@ export class RationalLine<P extends Point> implements RationalPath<P> {
         if (d_acop <= this.length && d_bcop <= this.length) {
             // If it's on the line, then return the magnitude of the rejection
             //  vector
-            return vec_ap.sub(co_vec).magnitude;
+            return vec_ap.sub(co_vec).magnitude();
         } else if (d_acop < d_bcop) {
             return point.dist(this.a);
         } else {
