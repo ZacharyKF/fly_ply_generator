@@ -13,7 +13,7 @@ const { transom, bulk_heads, waterlines, wind, lee , panels} =
     get_fogo_island_gunning_punt(); //get_debug_proa(); //;
 
 // Drawing parameters
-let scale_up = 100;
+let scale_up = 25;
 let slices = 250;
 let draw_main_curves = true;
 let draw_segments = true;
@@ -34,7 +34,7 @@ let puzzle_tooth_angle = (10 * pi) / 180;
 
 // ACTUAL CODE
 let segments_drawn = min(slices - 1, 75);
-let export_svg = (name: string, model: IModel) => {
+let export_svg = async (name: string, model: IModel) => {
     let to_export = MakerJs.model.scale(MakerJs.model.clone(model), scale_up);
     var svg = exporter.toSVG(to_export);
     fs.writeFile("svg/" + name + ".svg", svg, (_) => {});
