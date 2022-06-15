@@ -14,7 +14,7 @@ export interface RationalLut<P extends Point> {
     aa: number;
 }
 
-export const MAX_RESOLUTION = 1500;
+export const MAX_RESOLUTION = 500;
 export const MIN_STEP = 1 / MAX_RESOLUTION;
 export const MIN_STEP_FACTOR = 4 / 5;
 

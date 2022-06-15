@@ -70,8 +70,9 @@ export abstract class MeshNode {
 
             // Once the level is populated we want to "nudge" all of the points
             //  based on their proximity to their neighbors. nudging too many
-            //  times on higher levels isn't particularly useful
-            for (let t = 0; t <= (2 * n); t++) {
+            //  times on lower levels isn't particularly useful as the accuracy
+            //  improves with depth. It's easiest to
+            for (let t = 0; t <= n; t++) {
                 this.fornodes(div, false, (i, j) => {
                     // Get the idx we're about to nudge
                     const nudge_idx = this.get_idx(div, i, j);
@@ -116,7 +117,7 @@ export abstract class MeshNode {
 
         // The 10 here prevents nodes from crossing over, keeping the mesh
         //  somewhat stable
-        const dist_rel = (dist_3d - dist_2d) / (dist_3d * (div + 1));
+        const dist_rel = (dist_3d - dist_2d) / (dist_3d * (div + 2));
         p_move.nudge = p_move.nudge.add(vec_2d.mul(dist_rel));
     }
 
@@ -173,7 +174,9 @@ export abstract class MeshNode {
         }
     }
 
-    protected abstract adjust_fixed(div: number, n: number): void;
+    protected adjust_fixed(div: number, n: number): void {}
+
+    abstract get_all(): Point2D[];
     protected abstract forneighbors(
         div: number,
         i: number,
@@ -185,7 +188,7 @@ export abstract class MeshNode {
         skip_parent: boolean,
         f: (i: number, j: number) => void
     ): void;
-    protected abstract get_node(idx: number): FillingNode;
+    abstract get_node(idx: number): FillingNode;
     protected abstract set_node(idx: number, node: FillingNode): void;
     protected abstract get_i_j_rel(
         div: number,

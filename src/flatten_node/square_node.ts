@@ -1,4 +1,3 @@
-import { pi } from "mathjs";
 import { RationalBezierSurface } from "../curves/rational_bezier_surface";
 import { Point2D } from "../euclidean/rational_point";
 import { get_flat_third } from "../utils/rational_math";
@@ -24,7 +23,7 @@ export class SquareNode extends MeshNode {
         );
     }
 
-    protected get_node(idx: number): FillingNode {
+    get_node(idx: number): FillingNode {
         return this.square[idx];
     }
 
@@ -71,6 +70,10 @@ export class SquareNode extends MeshNode {
         }
     }
 
+    get_all(): Point2D[] {
+        return this.square.map((n) => n.false_point);
+    }
+
     protected forneighbors(
         div: number,
         i: number,
@@ -93,16 +96,6 @@ export class SquareNode extends MeshNode {
                 f(this.get_idx(div, c, r));
             }
         }
-    }
-
-    protected adjust_fixed(div: number, n: number): void {
-        this.fixed_idx_a = this.get_idx(div, n, n);
-        this.fixed_idx_b = this.get_idx(div, n, n - 1);
-
-        const a = this.square[this.fixed_idx_a];
-        const b = this.square[this.fixed_idx_b];
-        const dist = a.true_point.dist(b.true_point);
-        b.false_point = a.false_point.flat_rotation(0, dist, 3 * pi /2);
     }
 
     protected fill_initial(surface: RationalBezierSurface) {
