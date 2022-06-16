@@ -1,7 +1,7 @@
 import { min, pi } from "mathjs";
 import { RationalBezierSurface } from "../curves/rational_bezier_surface";
 import { Point2D } from "../euclidean/rational_point";
-import { get_flat_third } from "../utils/rational_math";
+import { flat_third_from_3D, get_flat_third } from "../utils/rational_math";
 import { BoundFn, FillingNode, FillResult, MeshNode } from "./mesh_node";
 
 export class TriangleNode extends MeshNode {
@@ -165,13 +165,12 @@ export class TriangleNode extends MeshNode {
         const fixed_idx_c = this.get_idx(0, 1, 1);
         const ut_c = this.get_ut(0, 1, 1);
         const p_c = surface.get_point_on_surface(ut_c.u, ut_c.t);
-        const d_ac = p_a.dist(p_c);
-        const d_bc = p_b.dist(p_c);
-        const f_c = get_flat_third(
+        const f_c = flat_third_from_3D(
+            p_b,
             f_b,
-            d_bc,
+            p_a,
             f_a,
-            d_ac,
+            p_c,
             this.reference_dir_third
         );
 
@@ -192,5 +191,20 @@ export class TriangleNode extends MeshNode {
             false_point: f_c,
             nudge: f_c,
         };
+    }
+
+    protected fill_drawable(): void {
+        const div = this.divisions;
+        const n = 2 ** div;
+
+        for (let i = 0; i <= n; i++) {
+            this.upper_nodes.push(
+                this.triangle[this.get_idx(div, i, 0)].false_point
+            );
+            this.lower_nodes.push(
+                this.triangle[this.get_idx(div, n - i, n - i)].false_point
+            );
+            this.end.push(this.triangle[this.get_idx(div, n, i)].false_point);
+        }
     }
 }

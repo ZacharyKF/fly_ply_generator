@@ -102,16 +102,17 @@ export class BezierSurfaceHull implements DrawableHull {
                 Point2D.Zero,
                 false
             );
-            const draw_down_ref_dir = (3 * pi) / 2;
-            const draw_up_ref_dir = pi / 2;
+
+            const upper_ref_angle = b_last.sub(t_last).as_unit();
+            const lower_ref_angle = t_last.sub(b_last).as_unit();
 
             const init_fill: FillResult = {
-                draw_up_ref_dir,
-                draw_down_ref_dir,
+                upper_ref_angle,
+                lower_ref_angle,
+                upper_ref_direction: Point2D.X.mul(-1),
+                lower_ref_direction: Point2D.X.mul(-1),
                 ref_point_upper: t_last,
                 ref_point_lower: b_last,
-                ref_dir_lower: b_last.as_unit(),
-                ref_dir_upper: t_last.as_unit(),
             };
 
             const initial_node = new UpperNode(
@@ -211,9 +212,9 @@ export class BezierSurfaceHull implements DrawableHull {
             this.surface_wind.surface_curves[0].c,
             full_interval,
             Point2D.Zero,
-            (3 * pi) / 2,
+            Point2D.Y.mul(-1),
             Point2D.X,
-            false,
+            true,
         );
         const unroll_angle = unroll.b_flat[0].axis_angle(0, unroll.a_flat[0]);
         let unroll_model = points_to_imodel(
@@ -274,9 +275,9 @@ export class BezierSurfaceHull implements DrawableHull {
             line_wind,
             false,
             Point2D.Zero,
-            (3 * pi) / 2,
+            Point2D.Y.mul(-1),
             Point2D.X,
-            false,
+            true,
         );
 
         const unroll_angle = unroll.b_flat[0].axis_angle(0, unroll.a_flat[0]);

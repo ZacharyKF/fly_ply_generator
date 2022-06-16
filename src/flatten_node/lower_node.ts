@@ -17,7 +17,7 @@ export class LowerNode extends FlattenNode {
         fill_last: FillResult,
         upper_bound: (dist: number) => number,
         lower_bound: (dist: number) => number,
-        private straight: boolean,
+        private straight: boolean
     ) {
         super(
             n_bulkheads,
@@ -26,8 +26,8 @@ export class LowerNode extends FlattenNode {
             idx,
             start_seg_idx,
             fill_last.ref_point_lower,
-            fill_last.draw_up_ref_dir,
-            fill_last.ref_dir_lower,
+            fill_last.lower_ref_angle,
+            fill_last.lower_ref_direction,
             upper_bound,
             lower_bound
         );
@@ -129,14 +129,12 @@ export class LowerNode extends FlattenNode {
         }
 
         return {
-            draw_up_ref_dir: flattened.f1f4_dir,
-            draw_down_ref_dir: flattened.fnfn_less1_dir,
-            ref_point_upper: flattened.a_flat[flattened.a_flat.length - 1],
+            lower_ref_angle: flattened.f1f4_dir,
+            upper_ref_angle: flattened.fnfn_less1_dir,
+            lower_ref_direction: flattened.f2f1_dir,
+            upper_ref_direction: flattened.f3nf4n_dir,
             ref_point_lower: flattened.a_flat[0],
-            ref_dir_upper: flattened.a_flat[flattened.a_flat.length - 1].sub(
-                flattened.b_flat[flattened.b_flat.length - 1]
-            ),
-            ref_dir_lower: flattened.a_flat[0].sub(flattened.b_flat[0]),
+            ref_point_upper: flattened.a_flat[flattened.a_flat.length - 1],
         };
     }
 }

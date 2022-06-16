@@ -318,6 +318,14 @@ export class Point2D implements Point {
 
     constructor(public x: number, public y: number, public w: number) {}
 
+    rotate_clockwise(): Point2D {
+        return new Point2D(this.y, -this.x, this.w);
+    }
+
+    rotate_counterclockwise(): Point2D {
+        return new Point2D(-this.y, this.x, this.w);
+    }
+
     magnitude(): number {
         return sqrt(this.x * this.x + this.y * this.y);
     }

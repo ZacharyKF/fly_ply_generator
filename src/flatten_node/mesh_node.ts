@@ -15,6 +15,7 @@ export abstract class MeshNode {
     // Empty from start
     children: MeshNode[] = [];
     start: Point2D[] = [];
+    end: Point2D[] = [];
     upper_nodes: Point2D[] = [];
     lower_nodes: Point2D[] = [];
     bulkheads: Point2D[][] = [];
@@ -107,6 +108,7 @@ export abstract class MeshNode {
             }
         }
 
+        this.fill_drawable();
         return {};
     }
 
@@ -117,7 +119,7 @@ export abstract class MeshNode {
 
         // The 10 here prevents nodes from crossing over, keeping the mesh
         //  somewhat stable
-        const dist_rel = (dist_3d - dist_2d) / (dist_3d * (div + 2));
+        const dist_rel = (dist_3d - dist_2d) / (dist_3d * (div + 1));
         p_move.nudge = p_move.nudge.add(vec_2d.mul(dist_rel));
     }
 
@@ -177,6 +179,8 @@ export abstract class MeshNode {
     protected adjust_fixed(div: number, n: number): void {}
 
     abstract get_all(): Point2D[];
+
+    protected abstract fill_drawable(): void;
     protected abstract forneighbors(
         div: number,
         i: number,

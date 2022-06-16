@@ -1,4 +1,4 @@
-import { abs, floor, min, sqrt } from "mathjs";
+import { abs, cos, floor, min, pi, sqrt } from "mathjs";
 import { RationalBezier } from "../curves/rational_bezier";
 import { RationalInterval } from "../curves/rational_interval";
 import { Point, Point2D, Point3D } from "../euclidean/rational_point";
@@ -67,8 +67,10 @@ export function binomial(n: number, k: number): number {
 export interface UnrollResult {
     a_flat: Point2D[];
     b_flat: Point2D[];
-    f1f4_dir: number;
-    fnfn_less1_dir: number;
+    f1f4_dir: Point2D;
+    fnfn_less1_dir: Point2D;
+    f2f1_dir: Point2D;
+    f3nf4n_dir: Point2D;
 }
 
 export function triangle_area<P extends Point>(a: P, b: P, c: P): number {
@@ -109,7 +111,7 @@ export function unroll_point_set(
     b: Point3D[],
     reverse_points: boolean,
     f2_init: Point2D,
-    f2f3_ang: number,
+    f2f3_dir: Point2D,
     dir_init: Point2D,
     use_dir_init: boolean
 ): UnrollResult {
@@ -136,9 +138,9 @@ export function unroll_point_set(
     return unroll_internal(
         points_a,
         points_b,
-        dir_init,
         f2_init,
-        f2f3_ang,
+        f2f3_dir,
+        dir_init,
         use_dir_init
     );
 }
@@ -221,7 +223,7 @@ export function unroll_beziers(
     b: RationalBezier<Point3D>,
     interval_b: RationalInterval,
     f2_init: Point2D,
-    f2f3_ang: number,
+    f2f3_dir: Point2D,
     dir_init: Point2D,
     use_dir_init: boolean
 ): UnrollResult {
@@ -242,9 +244,9 @@ export function unroll_beziers(
     return unroll_internal(
         points_a,
         points_b,
-        dir_init,
         f2_init,
-        f2f3_ang,
+        f2f3_dir,
+        dir_init,
         use_dir_init
     );
 }
@@ -252,9 +254,9 @@ export function unroll_beziers(
 export function unroll_internal(
     a: Point3D[],
     b: Point3D[],
-    dir_init: Point2D,
     f2_init: Point2D,
-    f2f3_ang: number,
+    f2f3_dir: Point2D,
+    dir_init: Point2D,
     use_dir_init: boolean
 ): UnrollResult {
     let p1 = a[0];
@@ -275,14 +277,13 @@ export function unroll_internal(
     let dirb = Point2D.Zero;
 
     if (use_dir_init) {
-        const dir = Point2D.Zero.flat_rotation(0, 1, f2f3_ang);
-        f1 = f2_init.add(dir_init.as_unit().mul(d12));
-        f3 = get_flat_third(f2, d23, f1, d13, dir);
-        f4 = get_flat_third(f1, d14, f2, d24, dir);
+        f1 = f2_init.add(dir_init.mul(d12));
+        f3 = flat_third_from_3D(p2, f2, p1, f1, p3, f2f3_dir);
+        f4 = flat_third_from_3D(p1, f1, p2, f2, p4, f2f3_dir);
     } else {
-        f3 = f2.flat_rotation(0, d23, f2f3_ang);
-        f1 = get_flat_third(f2, d12, f3, d13, dir_init);
-        f4 = get_flat_third(f1, d14, f2, d24, f3.sub(f2));
+        f3 = f2.add(f2f3_dir.mul(d23));
+        f1 = flat_third_from_3D(p2, f2, p3, f3, p1, dir_init);
+        f4 = flat_third_from_3D(p1, f1, p2, f2, p4, f2f3_dir);
     }
 
     const a_flat: Point2D[] = new Array(a.length);
@@ -306,8 +307,8 @@ export function unroll_internal(
         d13 = p1.dist(p3);
         d14 = p1.dist(p4);
         d24 = p2.dist(p4);
-        f3 = get_flat_third(f2, d23, f1, d13, dirb);
-        f4 = get_flat_third(f1, d14, f2, d24, dira);
+        f4 = flat_third_from_3D(p1, f1, p2, f2, p4, dira);
+        f3 = flat_third_from_3D(p2, f2, p1, f1, p3, dirb);
         dira = f4.sub(f1);
         dirb = f3.sub(f2);
         a_flat[i] = f4;
@@ -318,47 +319,70 @@ export function unroll_internal(
         f2 = f3;
     }
 
-    let f1f4_dir = a_flat[0].axis_angle(0, a_flat[1]);
-    let fnfn_less1_dir = a_flat[a_flat.length - 1].axis_angle(
-        0,
-        a_flat[a_flat.length - 2]
-    );
+    const f1f4_dir = a_flat[1].sub(a_flat[0]).as_unit();
+    const fnfn_less1_dir = a_flat[a_flat.length - 2]
+        .sub(a_flat[a_flat.length - 1])
+        .as_unit();
+    const f2f1_dir = a_flat[0].sub(b_flat[0]).as_unit();
+    const f3nf4n_dir = a_flat[a_flat.length - 1]
+        .sub(b_flat[b_flat.length - 1])
+        .as_unit();
 
     return {
         a_flat,
         b_flat,
         f1f4_dir,
         fnfn_less1_dir,
+        f2f1_dir,
+        f3nf4n_dir,
     };
 }
 
+export function flat_third_from_3D(
+    p0: Point3D,
+    f0: Point2D,
+    p1: Point3D,
+    f1: Point2D,
+    p2: Point3D,
+    dir: Point2D
+): Point2D {
+    const vec_01 = p1.sub(p0);
+    const vec_02 = p2.sub(p0);
+    const a_102 = vec_01.angle(vec_02);
+    return get_flat_third(f0, f1, vec_02.magnitude(), a_102, dir).set_dimm(
+        p2.w,
+        2
+    );
+}
+
+const tau = pi / 2;
 export function get_flat_third(
     f0: Point2D,
-    r0: number,
     f1: Point2D,
-    r1: number,
+    dist_02: number,
+    a_102: number,
     dir: Point2D
 ): Point2D {
     // Pre calculations
-    const dif_x = f1.x - f0.x;
-    const dif_y = f1.y - f0.y;
-    const d = sqrt(dif_x * dif_x + dif_y * dif_y);
-    const a = (r0 * r0 - r1 * r1 + d * d) / (2 * d);
-    const x2 = f0.x + (dif_x * a) / d;
-    const y2 = f0.y + (dif_y * a) / d;
-    const h = sqrt(r0 * r0 - a * a);
-    const rx = (-dif_y * h) / d;
-    const ry = (dif_x * h) / d;
+    const k_x = f1.x - f0.x;
+    const k_y = f1.y - f0.y;
+    const l_k = sqrt(k_x * k_x + k_y * k_y);
+    const l_u = dist_02 / l_k;
+    const k_clk_x = k_y;
+    const k_clk_y = -k_x;
+    const cos_a = cos(a_102);
+    const cos_1 = cos(a_102 + tau);
+    const cos_2 = cos(a_102 - tau);
+    const v_1x = k_x * cos_a + k_clk_x * cos_1;
+    const v_1y = k_y * cos_a + k_clk_y * cos_1;
+    const v_2x = k_x * cos_a + k_clk_x * cos_2;
+    const v_2y = k_y * cos_a + k_clk_y * cos_2;
+    const dot_1dir = v_1x * dir.x + v_1y * dir.y;
+    const dot_2dir = v_2x * dir.x + v_2y * dir.y;
 
-    // The two points
-    const pa = new Point2D(x2 + rx, y2 + ry, 1);
-    const dota = dir.dot(pa.sub(f0));
-
-    const pb = new Point2D(x2 - rx, y2 - ry, 1);
-    const dotb = dir.dot(pb.sub(f0));
-
-    if (dota > dotb) {
-        return pa;
+    if (dot_1dir > dot_2dir) {
+        return new Point2D(f0.x + l_u * v_1x, f0.y + l_u * v_1y, f0.w);
+    } else {
+        return new Point2D(f0.x + l_u * v_2x, f0.y + l_u * v_2y, f0.w);
     }
-    return pb;
 }

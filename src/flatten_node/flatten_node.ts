@@ -20,7 +20,7 @@ export abstract class FlattenNode {
         readonly idx: number,
         readonly start_seg_idx: number,
         readonly reference_point: Point2D,
-        readonly reference_angle: number,
+        readonly reference_angle: Point2D,
         readonly reference_direction: Point2D,
         readonly upper_bound: (dist: number) => number,
         readonly lower_bound: (dist: number) => number

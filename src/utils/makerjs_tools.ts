@@ -1,6 +1,13 @@
-import { IModel, IPath, models } from "makerjs";
+import * as fs from "fs";
+import MakerJs, { IModel, IPath, models, exporter, IPathMap } from "makerjs";
 import { abs, floor, pi } from "mathjs";
 import { Point, Point2D } from "../euclidean/rational_point";
+
+export function export_svg(name: string, model: IModel) {
+    const to_export = MakerJs.model.scale(MakerJs.model.clone(model), 100);
+    const svg = exporter.toSVG(to_export);
+    fs.writeFile("svg/" + name + ".svg", svg, (_) => {});
+}
 
 export function colinear_filter_points(
     datum: Point[],
@@ -48,7 +55,9 @@ export function points_to_imodel(
 ): IModel {
     return new models.ConnectTheDots(
         loop,
-        colinear_filter_points(points, 0.99999999).map((p) => p.to_ipoint(dimension))
+        colinear_filter_points(points, 0.99999999).map((p) =>
+            p.to_ipoint(dimension)
+        )
     );
 }
 

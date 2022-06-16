@@ -153,11 +153,13 @@ export function node_to_continuous_points(
     return points;
 }
 
+// The reference angle refers to the f2f3 angle, the reference direction
+//  cooresponds with the f2f1 angle
 export interface FillResult {
-    draw_up_ref_dir: number;
-    draw_down_ref_dir: number;
+    upper_ref_angle: Point2D;
+    lower_ref_angle: Point2D;
+    upper_ref_direction: Point2D;
+    lower_ref_direction: Point2D;
     ref_point_upper: Point2D;
     ref_point_lower: Point2D;
-    ref_dir_upper: Point2D;
-    ref_dir_lower: Point2D;
 }

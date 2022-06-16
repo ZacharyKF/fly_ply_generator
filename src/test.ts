@@ -1,5 +1,5 @@
-import * as fs from "fs";
-import MakerJs, { IModel, IModelMap, exporter, IPathMap } from "makerjs";
+
+import MakerJs, { IModel, IModelMap } from "makerjs";
 import { abs, min, mod, pi, tan } from "mathjs";
 import { BezierSurfaceHull } from "./hulls/bezier_surface_hull";
 import { get_debug_proa } from "./hulls/debug_proa";
@@ -8,14 +8,8 @@ import { RationalBounds } from "./euclidean/rational_bounds";
 import { RationalPlane } from "./euclidean/rational_plane";
 import { Point2D, Point3D } from "./euclidean/rational_point";
 import { relay_line } from "./utils/rational_math";
-import { color_dark, color_naturally, make_arrow, points_to_imodel } from "./utils/makerjs_tools";
+import { color_dark, color_naturally, export_svg, make_arrow, points_to_imodel } from "./utils/makerjs_tools";
 import { RationalBezierSurface } from "./curves/rational_bezier_surface";
-
-const export_svg = (name: string, model: IModel) => {
-    const to_export = MakerJs.model.scale(MakerJs.model.clone(model), 100);
-    const svg = exporter.toSVG(to_export);
-    fs.writeFile("svg/" + name + ".svg", svg, (_) => {});
-};
 
 const draw_arrow = (a: Point2D, b: Point2D): IModel => {
     return make_arrow(0, a, b, pi/8, 0.25); 

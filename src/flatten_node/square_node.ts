@@ -1,6 +1,7 @@
+import { pi } from "mathjs";
 import { RationalBezierSurface } from "../curves/rational_bezier_surface";
 import { Point2D } from "../euclidean/rational_point";
-import { get_flat_third } from "../utils/rational_math";
+import { flat_third_from_3D, get_flat_third } from "../utils/rational_math";
 import { BoundFn, FillingNode, MeshNode } from "./mesh_node";
 
 export class SquareNode extends MeshNode {
@@ -44,10 +45,9 @@ export class SquareNode extends MeshNode {
         j: number
     ): { i_rel: number; j_rel: number } {
         // Converting to relative coordinates
-        const step_max = this.steps[0];
-        const step = this.steps[div];
-        const i_rel = (i * step) / step_max;
-        const j_rel = (j * step) / step_max;
+        const n = 2 ** div;
+        const i_rel = i/n;
+        const j_rel = j/n;
         return { i_rel, j_rel };
     }
 
@@ -129,13 +129,15 @@ export class SquareNode extends MeshNode {
             ut_unfixed_top.u,
             ut_unfixed_top.t
         );
-        const unfixed_false_top = get_flat_third(
-            this.square[this.fixed_idx_a].false_point,
-            p_fixed_top.dist(p_unfixed_top),
-            this.square[this.fixed_idx_b].false_point,
-            p_fixed_bot.dist(p_unfixed_top),
+        const unfixed_false_top = flat_third_from_3D(
+            p_fixed_top,
+            this.reference_point_top,
+            p_fixed_bot,
+            this.reference_point_bottom,
+            p_unfixed_top,
             Point2D.X.mul(-1)
         );
+        
         this.square[idx_unfixed_top] = {
             true_point: p_unfixed_top,
             false_point: unfixed_false_top,
@@ -147,18 +149,38 @@ export class SquareNode extends MeshNode {
         const p_unfixed_bot = surface.get_point_on_surface(
             ut_unfixed_bot.u,
             ut_unfixed_bot.t
-        );
-        const unfixed_false_bot = get_flat_third(
-            this.square[this.fixed_idx_b].false_point,
-            p_fixed_bot.dist(p_unfixed_bot),
-            this.square[this.fixed_idx_a].false_point,
-            p_fixed_top.dist(p_unfixed_bot),
-            Point2D.X.mul(-1)
+            );
+
+        const unfixed_false_bot = flat_third_from_3D(
+            p_fixed_bot,
+            this.reference_point_bottom,
+            p_fixed_top,
+            this.reference_point_top,
+            p_unfixed_bot,
+            Point2D.X.mul(-1),
         );
         this.square[idx_unfixed_bot] = {
             true_point: p_unfixed_bot,
             false_point: unfixed_false_bot,
             nudge: unfixed_false_bot,
         };
+    }
+
+    protected fill_drawable(): void {
+        const div = this.divisions;
+        const n = 2 ** div;
+
+        for (let i = 0; i <= n; i++) {
+            this.upper_nodes.push(
+                this.square[this.get_idx(div, i, 0)].false_point
+            );
+            this.lower_nodes.push(
+                this.square[this.get_idx(div, n - i, n)].false_point
+            );
+            this.end.push(this.square[this.get_idx(div, n, i)].false_point);
+            this.start.push(
+                this.square[this.get_idx(div, 0, n - i)].false_point
+            );
+        }
     }
 }

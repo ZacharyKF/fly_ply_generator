@@ -3,10 +3,7 @@ import { SurfaceCurve } from "../curves/rational_bezier_surface";
 import { RationalInterval } from "../curves/rational_interval";
 import { Point2D, Point3D } from "../euclidean/rational_point";
 import { point_path_to_puzzle_teeth } from "../utils/makerjs_tools";
-import {
-    interpolate_line,
-    unroll_beziers,
-} from "../utils/rational_math";
+import { interpolate_line, unroll_beziers } from "../utils/rational_math";
 import { FillResult } from "./draw_nodes";
 import { FlattenNode } from "./flatten_node";
 
@@ -28,8 +25,8 @@ export class UpperNode extends FlattenNode {
             idx,
             start_seg_idx,
             fill_last.ref_point_upper,
-            fill_last.draw_down_ref_dir,
-            fill_last.ref_dir_lower,
+            fill_last.upper_ref_angle,
+            fill_last.lower_ref_direction,
             upper_bound,
             lower_bound
         );
@@ -122,7 +119,7 @@ export class UpperNode extends FlattenNode {
                 flattened.a_flat[0],
                 flattened.f1f4_dir,
                 this.reference_direction,
-                false,
+                false
             );
 
             this.append_segment(flattened.a_flat, a.c, a.b);
@@ -131,14 +128,12 @@ export class UpperNode extends FlattenNode {
         }
 
         return {
-            draw_up_ref_dir: flattened.fnfn_less1_dir,
-            draw_down_ref_dir: flattened.f1f4_dir,
+            upper_ref_angle: flattened.f1f4_dir,
+            lower_ref_angle: flattened.fnfn_less1_dir,
+            upper_ref_direction: flattened.f2f1_dir,
+            lower_ref_direction: flattened.f3nf4n_dir,
             ref_point_upper: flattened.a_flat[0],
             ref_point_lower: flattened.a_flat[flattened.a_flat.length - 1],
-            ref_dir_upper: flattened.a_flat[0].sub(flattened.b_flat[0]),
-            ref_dir_lower: flattened.a_flat[flattened.a_flat.length - 1].sub(
-                flattened.b_flat[flattened.b_flat.length - 1]
-            ),
         };
     }
 }
